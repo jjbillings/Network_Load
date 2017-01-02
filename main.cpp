@@ -17,7 +17,7 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 800
+#define NUM_CONNECTIONS 1000
 #define MAX_CHANNELS 50
 
 
@@ -61,7 +61,7 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum);
 bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection conns[NUM_CONNECTIONS], int connectionNum, int hops);
 
 bool single_path_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p);
-void single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]);
+bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]);
 
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
@@ -118,6 +118,8 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
     Path structPaths[NUM_CONNECTIONS];
     Connection conns[NUM_CONNECTIONS];
 
+    int numIncompleteConnections = 0; //Number of connections that couldn't be allocated completely.
+
     //Init our paths storage
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
         structPaths[i].index = 0; //TODO: Auto-init to 0???
@@ -144,7 +146,9 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
         conns[i].sourceNode = v1;
         conns[i].destNode = v2;
 
-        single_connection_N_hops(vertexList,edgeList,10,i,conns);
+        if(single_connection_N_hops(vertexList,edgeList,10,i,conns) == false) {
+            numIncompleteConnections++;
+        }
 
         /*
         //First, compute the shortest path from v1 to v2.
@@ -167,6 +171,8 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
         cout << edgeList[i].v1 << " -> " << edgeList[i].v2 << " | LOAD: " << edgeList[i].load << "\n";
     }
 
+    cout << "Number of incomplete connections: " << numIncompleteConnections << "\n";
+    cout << "Number of complete connections: " << (NUM_CONNECTIONS - numIncompleteConnections) << "\n";
 
     /*
     //Prints the paths/
@@ -242,7 +248,7 @@ void readGraph(int vertexList[], Edge compactEdgeList[2*N_EDGES]) {
 }
 
 
-void single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]) {
+bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]) {
     printf("-------DEFINING_CONNECTION_%d-------\n",connectionNum);
 
     //Allocate the primary path (Make it the shortest path for now).
@@ -275,6 +281,11 @@ void single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
         }
     }
 
+    if(conns[connectionNum].validPrimary == true && conns[connectionNum].validBackup == true) {
+        return true;
+    }
+
+    return false;
     /*
     if(conns[connectionNum].validPrimary == true) {
         //Debug output for development.

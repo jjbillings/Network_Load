@@ -1,0 +1,5 @@
+.DS_Store
+a.out
+avg_paths_per_hop.csv
+backups/
+load_per_edge/
