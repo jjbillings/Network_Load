@@ -17,8 +17,8 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 10
-#define MAX_CHANNELS 50
+#define NUM_CONNECTIONS 100
+#define MAX_CHANNELS 10
 
 
 
@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     srand(time(NULL));
     for(int i = 0; i < 1; ++i) {
         readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
-        //randomConnections(vertexList,edgeList,i);
+        randomConnections(vertexList,reorderedEdgeList,i);
     }
 
     return 0;
