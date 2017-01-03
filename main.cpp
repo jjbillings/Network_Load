@@ -57,11 +57,11 @@ struct Connection {
 
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum);
-//bool single_path_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, int paths[NUM_CONNECTIONS][N_NODES], int connectionNum, Path structPaths[NUM_CONNECTIONS]);
-bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection conns[NUM_CONNECTIONS], int connectionNum, int hops);
 
-bool single_path_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p);
 bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]);
+
+bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection conns[NUM_CONNECTIONS], int connectionNum, int hops);
+bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p);
 
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
@@ -149,22 +149,7 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
         if(single_connection_N_hops(vertexList,edgeList,10,i,conns) == false) {
             numIncompleteConnections++;
         }
-
-        /*
-        //First, compute the shortest path from v1 to v2.
-        for(int hop = 3; hop < N_NODES; ++hop) {
-            bool pathFound = single_path_N_hops(vertexList,edgeList,v1,v2,hop,paths,i,structPaths);
-            if(pathFound == true) {
-                cout << "YAY WE FOUND ONE\n";
-                break;
-            }else {
-                cout << "WE DIDN't FIND A PATH\n";
-            }
-        }
-        */
     }
-
-
 
     //Prints the current load for every edge of the graph.
     for(int i = 0; i < 2*N_EDGES; ++i) {
@@ -174,29 +159,6 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
     cout << "Number of incomplete connections: " << numIncompleteConnections << "\n";
     cout << "Number of complete connections: " << (NUM_CONNECTIONS - numIncompleteConnections) << "\n";
 
-    /*
-    //Prints the paths/
-    //TODO: probably going to get rid of the paths array pretty soon and rely solely on the structPaths.
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-        for(int j = 0; j < N_NODES; ++j) {
-            cout << paths[i][j] << " ";
-        }
-        cout << "\n";
-    }
-
-    //Print out the paths using the Path struct.
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-        cout << "PATH: " << structPaths[i].sourceNode << " -> " << structPaths[i].destNode << ". HOPS: " << structPaths[i].hops << "\n";
-        for(int j = 0; j < structPaths[i].index; ++j) {
-            cout << (*structPaths[i].edges[j]).v1 << " -> ";
-        }
-        cout << (*structPaths[i].edges[structPaths[i].index]).v1 << " -> " << (*structPaths[i].edges[structPaths[i].index]).v2 << "\n\n";
-    }
-
-    for(int i = 2; i < 10; ++i) {
-        computeBackupPath(vertexList,edgeList,structPaths[1],structPaths[3],i);
-    }
-    */
 }
 
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum) {
@@ -254,7 +216,7 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
     //Allocate the primary path (Make it the shortest path for now).
     //We start with paths that are 1 hop away, continuing with longer paths until we successfully find a valid one.
     for(int hop = 1; hop < N_NODES; ++hop) {
-        bool pathFound = single_path_N_hops(vertexList,edgeList,conns[connectionNum].sourceNode,conns[connectionNum].destNode,hop,&conns[connectionNum].primaryPath);
+        bool pathFound = computePrimaryPath(vertexList,edgeList,conns[connectionNum].sourceNode,conns[connectionNum].destNode,hop,&conns[connectionNum].primaryPath);
         if(pathFound == true) {
             //This becomes the primary path for this connection.
             conns[connectionNum].primaryPath.primary = true;
@@ -318,7 +280,7 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
 /**
     Allocate primary path for the connection. Finds a path from SN -> DN of EXACTLY "hops" hops.
 **/
-bool single_path_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, int hops, Path *p) {
+bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, int hops, Path *p) {
     //printf("-------SINGLE_PATH_%d_HOPS-------\n",hops);
     //printf("-------|%d -> %d|----------------\n",sourceNode,destNode);
 
