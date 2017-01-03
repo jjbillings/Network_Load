@@ -17,7 +17,7 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 1000
+#define NUM_CONNECTIONS 10
 #define MAX_CHANNELS 50
 
 
@@ -65,6 +65,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
+void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
 void printPath(int sourceNode, int destNode, int parent[]);
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum);
 
@@ -102,12 +103,13 @@ int main(int argc, char** argv) {
     //Stores the starting index of each vertex into the edgeList/edgeWeights
     int vertexList[N_NODES+1];
     Edge edgeList[2*N_EDGES];
+    Edge reorderedEdgeList[2*N_EDGES];
 
     //init random number generator
     srand(time(NULL));
-    for(int i = 0; i < 40; ++i) {
-        readGraph(vertexList,edgeList);
-        randomConnections(vertexList,edgeList,i);
+    for(int i = 0; i < 1; ++i) {
+        readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
+        //randomConnections(vertexList,edgeList,i);
     }
 
     return 0;
@@ -209,6 +211,83 @@ void readGraph(int vertexList[], Edge compactEdgeList[2*N_EDGES]) {
     vertexList[N_NODES] = 2*N_EDGES;
 }
 
+void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]) {
+    //cout << "Beginning read\n";
+
+    //TODO: We def don't need this extra array... please revise.
+    int edgeList[N_NODES][N_NODES];
+    for(int i = 0; i < N_NODES; ++i) {
+        for(int j = 0; j < N_NODES; ++j) {
+            edgeList[i][j] = 0;
+        }
+    }
+    for(int i = 0; i < N_EDGES; ++i) {
+        edgeList[base_edges[i][0]][base_edges[i][1]] = 1;
+        edgeList[base_edges[i][1]][base_edges[i][0]] = 1;
+    }
+
+    int vDegree[N_NODES];
+
+    int counter = 0;
+    for(int i = 0; i < N_NODES; ++i) {
+        vertexList[i] = counter;
+        for(int j = 0; j < N_NODES; ++j) {
+            if(edgeList[i][j] != 0) {
+                compactEdgeList[counter].v1 = i;
+                compactEdgeList[counter].v2 = j;
+                compactEdgeList[counter].load = 0;
+                counter++;
+            }
+        }
+
+        vDegree[i] = counter - vertexList[i];
+
+        cout << i << ": " << vDegree[i] << "\n";
+    }
+    vertexList[N_NODES] = 2*N_EDGES;
+
+    //THis successfully reorders the edgelist based on the degree of the neighbor.
+    //TODO: make this sorting algorithm faster... like WAY faster.
+    for(int i = 0; i < N_NODES; ++i) {
+
+        int startInd = vertexList[i];
+        int endInd = vertexList[i+1];
+        //[startInd,endInd)
+
+        int reorderedInd = startInd;
+
+        while(reorderedInd < endInd) {
+            int min = startInd;
+            int minVal = 66666; //min degree of the neighbor
+
+            //Find the "smallest" neighbor of this node.
+            for(int j = startInd; j < endInd; ++j) {
+
+                bool isReordered = false;
+
+                //Check to see if this node is already in our reordered list.
+                for(int k = startInd; k < reorderedInd; ++k) {
+                    if(reorderedEdgeList[k].v2 == compactEdgeList[j].v2) {
+                        isReordered = true;
+                        break;
+                    }
+                }
+
+                //if its not in our reordered list and it qualifies as the minimum neighbor.
+                if(isReordered == false && vDegree[compactEdgeList[j].v2] <= minVal) {
+                    min = j;
+                    minVal = vDegree[compactEdgeList[j].v2];
+                }
+
+            }
+
+            reorderedEdgeList[reorderedInd].v1 = compactEdgeList[min].v1;
+            reorderedEdgeList[reorderedInd].v2 = compactEdgeList[min].v2;
+            reorderedEdgeList[reorderedInd].load = 0;
+            reorderedInd++;
+        }
+    }
+}
 
 bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]) {
     printf("-------DEFINING_CONNECTION_%d-------\n",connectionNum);
