@@ -77,31 +77,6 @@ void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES
 
 bool comparePath(const Path& p1, const Path& p2);
 
-bool comparePath(const Path& p1, const Path& p2)
-{
-    //cout << p1.sourceNode << " = " << p2.sourceNode << "\n";
-    if((p1).sourceNode != (p2).sourceNode) {
-        return false;
-    }
-    //cout << p1.destNode << " = " << p2.destNode << "\n";
-    if((p1).destNode != (p2).destNode) {
-        return false;
-    }
-    //cout << p1.hops << " = " << p2.hops << "\n";
-    if((p1).hops != (p2).hops || (p1).index != (p2).index) {
-        return false;
-    }
-
-    for(int i = 0; i <= p1.index; ++i) {
-
-        if(p1.edges[i] != p2.edges[i]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /*
  *
  */
@@ -162,132 +137,6 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
     //exportNetworkLoad(conns,edgeList,sampleNum,numIncompleteConnections);
 }
 
-void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections) {
-    ofstream outputFile;
-    string filename ("./load_per_edge/load_per_edge_");
-    filename += to_string(sampleNum);
-    filename += ".csv";
-
-    cout << filename << "\n";
-    outputFile.open(filename,ios_base::app);
-    outputFile << numIncompleteConnections << "\n";
-    for(int i = 0; i < 2*N_EDGES; ++i) {
-        outputFile << i << "," << edgeList[i].load << "\n";
-
-    }
-    outputFile.close();
-    for(int j = 0; j < NUM_CONNECTIONS; ++j) {
-        conns[j] = Connection();
-    }
-}
-
-void readGraph(int vertexList[], Edge compactEdgeList[2*N_EDGES]) {
-    //cout << "Beginning read\n";
-
-    //TODO: We def don't need this extra array... please revise.
-    int edgeList[N_NODES][N_NODES];
-    for(int i = 0; i < N_NODES; ++i) {
-        for(int j = 0; j < N_NODES; ++j) {
-            edgeList[i][j] = 0;
-        }
-    }
-    for(int i = 0; i < N_EDGES; ++i) {
-        edgeList[base_edges[i][0]][base_edges[i][1]] = 1;
-        edgeList[base_edges[i][1]][base_edges[i][0]] = 1;
-    }
-
-    int counter = 0;
-    for(int i = 0; i < N_NODES; ++i) {
-        vertexList[i] = counter;
-        for(int j = 0; j < N_NODES; ++j) {
-            if(edgeList[i][j] != 0) {
-                compactEdgeList[counter].v1 = i;
-                compactEdgeList[counter].v2 = j;
-                compactEdgeList[counter].load = 0;
-                counter++;
-            }
-        }
-    }
-    vertexList[N_NODES] = 2*N_EDGES;
-}
-
-void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]) {
-    //cout << "Beginning read\n";
-
-    //TODO: We def don't need this extra array... please revise.
-    int edgeList[N_NODES][N_NODES];
-    for(int i = 0; i < N_NODES; ++i) {
-        for(int j = 0; j < N_NODES; ++j) {
-            edgeList[i][j] = 0;
-        }
-    }
-    for(int i = 0; i < N_EDGES; ++i) {
-        edgeList[base_edges[i][0]][base_edges[i][1]] = 1;
-        edgeList[base_edges[i][1]][base_edges[i][0]] = 1;
-    }
-
-    int vDegree[N_NODES];
-
-    int counter = 0;
-    for(int i = 0; i < N_NODES; ++i) {
-        vertexList[i] = counter;
-        for(int j = 0; j < N_NODES; ++j) {
-            if(edgeList[i][j] != 0) {
-                compactEdgeList[counter].v1 = i;
-                compactEdgeList[counter].v2 = j;
-                compactEdgeList[counter].load = 0;
-                counter++;
-            }
-        }
-
-        vDegree[i] = counter - vertexList[i];
-
-        //cout << i << ": " << vDegree[i] << "\n";
-    }
-    vertexList[N_NODES] = 2*N_EDGES;
-
-    //THis successfully reorders the edgelist based on the degree of the neighbor.
-    //TODO: make this sorting algorithm faster... like WAY faster.
-    for(int i = 0; i < N_NODES; ++i) {
-
-        int startInd = vertexList[i];
-        int endInd = vertexList[i+1];
-        //[startInd,endInd)
-
-        int reorderedInd = startInd;
-
-        while(reorderedInd < endInd) {
-            int min = startInd;
-            int minVal = 66666; //min degree of the neighbor
-
-            //Find the "smallest" neighbor of this node.
-            for(int j = startInd; j < endInd; ++j) {
-
-                bool isReordered = false;
-
-                //Check to see if this node is already in our reordered list.
-                for(int k = startInd; k < reorderedInd; ++k) {
-                    if(reorderedEdgeList[k].v2 == compactEdgeList[j].v2) {
-                        isReordered = true;
-                        break;
-                    }
-                }
-
-                //if its not in our reordered list and it qualifies as the minimum neighbor.
-                if(isReordered == false && vDegree[compactEdgeList[j].v2] <= minVal) {
-                    min = j;
-                    minVal = vDegree[compactEdgeList[j].v2];
-                }
-
-            }
-
-            reorderedEdgeList[reorderedInd].v1 = compactEdgeList[min].v1;
-            reorderedEdgeList[reorderedInd].v2 = compactEdgeList[min].v2;
-            reorderedEdgeList[reorderedInd].load = 0;
-            reorderedInd++;
-        }
-    }
-}
 
 bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]) {
     printf("-------DEFINING_CONNECTION_%d-------\n",connectionNum);
@@ -444,7 +293,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 }
 
 
-
 bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection conns[NUM_CONNECTIONS], int connectionNum, int hops) {
     //cout << "-----------COMPUTING BACKUP PATH ---------------\n";
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
@@ -555,6 +403,149 @@ bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection co
     return false;
 }
 
+
+/**
+HELPER FUNCTIONS
+**/
+bool comparePath(const Path& p1, const Path& p2)
+{
+    //cout << p1.sourceNode << " = " << p2.sourceNode << "\n";
+    if((p1).sourceNode != (p2).sourceNode) {
+        return false;
+    }
+    //cout << p1.destNode << " = " << p2.destNode << "\n";
+    if((p1).destNode != (p2).destNode) {
+        return false;
+    }
+    //cout << p1.hops << " = " << p2.hops << "\n";
+    if((p1).hops != (p2).hops || (p1).index != (p2).index) {
+        return false;
+    }
+
+    for(int i = 0; i <= p1.index; ++i) {
+
+        if(p1.edges[i] != p2.edges[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+INPUT FUNCTIONS
+**/
+void readGraph(int vertexList[], Edge compactEdgeList[2*N_EDGES]) {
+    //cout << "Beginning read\n";
+
+    //TODO: We def don't need this extra array... please revise.
+    int edgeList[N_NODES][N_NODES];
+    for(int i = 0; i < N_NODES; ++i) {
+        for(int j = 0; j < N_NODES; ++j) {
+            edgeList[i][j] = 0;
+        }
+    }
+    for(int i = 0; i < N_EDGES; ++i) {
+        edgeList[base_edges[i][0]][base_edges[i][1]] = 1;
+        edgeList[base_edges[i][1]][base_edges[i][0]] = 1;
+    }
+
+    int counter = 0;
+    for(int i = 0; i < N_NODES; ++i) {
+        vertexList[i] = counter;
+        for(int j = 0; j < N_NODES; ++j) {
+            if(edgeList[i][j] != 0) {
+                compactEdgeList[counter].v1 = i;
+                compactEdgeList[counter].v2 = j;
+                compactEdgeList[counter].load = 0;
+                counter++;
+            }
+        }
+    }
+    vertexList[N_NODES] = 2*N_EDGES;
+}
+
+void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]) {
+    //cout << "Beginning read\n";
+
+    //TODO: We def don't need this extra array... please revise.
+    int edgeList[N_NODES][N_NODES];
+    for(int i = 0; i < N_NODES; ++i) {
+        for(int j = 0; j < N_NODES; ++j) {
+            edgeList[i][j] = 0;
+        }
+    }
+    for(int i = 0; i < N_EDGES; ++i) {
+        edgeList[base_edges[i][0]][base_edges[i][1]] = 1;
+        edgeList[base_edges[i][1]][base_edges[i][0]] = 1;
+    }
+
+    int vDegree[N_NODES];
+
+    int counter = 0;
+    for(int i = 0; i < N_NODES; ++i) {
+        vertexList[i] = counter;
+        for(int j = 0; j < N_NODES; ++j) {
+            if(edgeList[i][j] != 0) {
+                compactEdgeList[counter].v1 = i;
+                compactEdgeList[counter].v2 = j;
+                compactEdgeList[counter].load = 0;
+                counter++;
+            }
+        }
+
+        vDegree[i] = counter - vertexList[i];
+
+        //cout << i << ": " << vDegree[i] << "\n";
+    }
+    vertexList[N_NODES] = 2*N_EDGES;
+
+    //THis successfully reorders the edgelist based on the degree of the neighbor.
+    //TODO: make this sorting algorithm faster... like WAY faster.
+    for(int i = 0; i < N_NODES; ++i) {
+
+        int startInd = vertexList[i];
+        int endInd = vertexList[i+1];
+        //[startInd,endInd)
+
+        int reorderedInd = startInd;
+
+        while(reorderedInd < endInd) {
+            int min = startInd;
+            int minVal = 66666; //min degree of the neighbor
+
+            //Find the "smallest" neighbor of this node.
+            for(int j = startInd; j < endInd; ++j) {
+
+                bool isReordered = false;
+
+                //Check to see if this node is already in our reordered list.
+                for(int k = startInd; k < reorderedInd; ++k) {
+                    if(reorderedEdgeList[k].v2 == compactEdgeList[j].v2) {
+                        isReordered = true;
+                        break;
+                    }
+                }
+
+                //if its not in our reordered list and it qualifies as the minimum neighbor.
+                if(isReordered == false && vDegree[compactEdgeList[j].v2] <= minVal) {
+                    min = j;
+                    minVal = vDegree[compactEdgeList[j].v2];
+                }
+
+            }
+
+            reorderedEdgeList[reorderedInd].v1 = compactEdgeList[min].v1;
+            reorderedEdgeList[reorderedInd].v2 = compactEdgeList[min].v2;
+            reorderedEdgeList[reorderedInd].load = 0;
+            reorderedInd++;
+        }
+    }
+}
+
+/**
+OUTPUT FUNCTIONS
+**/
 void printConnection(Connection *connection) {
     if((*connection).validPrimary == true) {
         //Debug output for development.
@@ -579,5 +570,24 @@ void printConnection(Connection *connection) {
         cout << (*(*connection).backupPath.edges[(*connection).backupPath.index]).v1 << " -> " << (*(*connection).backupPath.edges[(*connection).backupPath.index]).v2 << "\n\n";
     }else {
         cout << "UNABLE TO ALLOCATE A VALID BACKUP PATH\n";
+    }
+}
+
+void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections) {
+    ofstream outputFile;
+    string filename ("./load_per_edge/load_per_edge_");
+    filename += to_string(sampleNum);
+    filename += ".csv";
+
+    cout << filename << "\n";
+    outputFile.open(filename,ios_base::app);
+    outputFile << numIncompleteConnections << "\n";
+    for(int i = 0; i < 2*N_EDGES; ++i) {
+        outputFile << i << "," << edgeList[i].load << "\n";
+
+    }
+    outputFile.close();
+    for(int j = 0; j < NUM_CONNECTIONS; ++j) {
+        conns[j] = Connection();
     }
 }
