@@ -17,17 +17,24 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 1000
+#define NUM_CONNECTIONS 1
 #define MAX_CHANNELS 50
+#define SAMPLES 1
 
+struct Path;
+struct Edge;
+struct Connection;
+struct Channel;
 
+struct Channel{
+    Path *backupsOnChannel[NUM_CONNECTIONS];//Realistically, there will be far fewer than NUM_CONNECTIONS
+};
 
 struct Edge {
     int v1;
     int v2;
-    int load; //load <= maxChannels
-    int maxChannels;
-    //Path *channels[MAX_CHANNELS];
+    int load; //load <= MAX_CHANNELS. Also, load is the sum of the primary AND backups paths using it.
+    Channel *channels[MAX_CHANNELS];
 };
 
 struct Path {
@@ -41,7 +48,6 @@ struct Path {
     Edge *edges[N_NODES];
     bool primary;
     bool active;
-
 };
 
 struct Connection {
@@ -51,7 +57,6 @@ struct Connection {
     bool validPrimary;
 	Path backupPath;
 	Path primaryPath;
-	int channel; //IF we want to stick to one channel.
 };
 
 
@@ -67,6 +72,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
 void printPath(int sourceNode, int destNode, int parent[]);
+void printConnection(Connection *connection);
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections);
 
 bool comparePath(const Path& p1, const Path& p2);
@@ -105,10 +111,9 @@ int main(int argc, char** argv) {
     Edge edgeList[2*N_EDGES];
     Edge reorderedEdgeList[2*N_EDGES];
 
-    int numSamples = 40;
     //init random number generator
     srand(time(NULL));
-    for(int i = 0; i < numSamples; ++i) {
+    for(int i = 0; i < SAMPLES; ++i) {
         readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
         randomConnections(vertexList,reorderedEdgeList,i);
         //randomConnections(vertexList,edgeList,i);
@@ -118,17 +123,9 @@ int main(int argc, char** argv) {
 }
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) {
-    Path structPaths[NUM_CONNECTIONS];
     Connection conns[NUM_CONNECTIONS];
 
     int numIncompleteConnections = 0; //Number of connections that couldn't be allocated completely.
-
-    //Init our paths storage
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-        structPaths[i].index = 0; //TODO: Auto-init to 0???
-    }
-
-
 
     //Generate NUM_CONNECTIONS random connections
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
@@ -159,6 +156,9 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
     cout << "Number of incomplete connections: " << numIncompleteConnections << "\n";
     cout << "Number of complete connections: " << (NUM_CONNECTIONS - numIncompleteConnections) << "\n";
 
+    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
+        printConnection(&conns[i]);
+    }
     //exportNetworkLoad(conns,edgeList,sampleNum,numIncompleteConnections);
 }
 
@@ -242,7 +242,7 @@ void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],E
 
         vDegree[i] = counter - vertexList[i];
 
-        cout << i << ": " << vDegree[i] << "\n";
+        //cout << i << ": " << vDegree[i] << "\n";
     }
     vertexList[N_NODES] = 2*N_EDGES;
 
@@ -327,32 +327,6 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
     }
 
     return false;
-    /*
-    if(conns[connectionNum].validPrimary == true) {
-        //Debug output for development.
-        cout << "PRINTING CONNECTION " << connectionNum << "\n";
-        printf("PRIMARY - Hops: %d, Index: %d\n",conns[connectionNum].primaryPath.hops,conns[connectionNum].primaryPath.index);
-        printf("Source: %d, Dest: %d\n",conns[connectionNum].sourceNode, conns[connectionNum].destNode);
-        for(int j = 0; j < conns[connectionNum].primaryPath.index; ++j) {
-            cout << (*conns[connectionNum].primaryPath.edges[j]).v1 << " -> ";
-        }
-        cout << (*conns[connectionNum].primaryPath.edges[conns[connectionNum].primaryPath.index]).v1 << " -> " << (*conns[connectionNum].primaryPath.edges[conns[connectionNum].primaryPath.index]).v2 << "\n\n";
-    }else {
-        cout << "COULDN'T ALLOCATE A VALID PRIMARY PATH\n";
-    }
-
-
-    if(conns[connectionNum].validBackup == true) {
-        printf("BACKUP - Hops: %d, Index: %d\n",conns[connectionNum].backupPath.hops,conns[connectionNum].backupPath.index);
-        printf("Source: %d, Dest: %d\n",conns[connectionNum].sourceNode, conns[connectionNum].destNode);
-        for(int j = 0; j < conns[connectionNum].backupPath.index; ++j) {
-            cout << (*conns[connectionNum].backupPath.edges[j]).v1 << " -> ";
-        }
-        cout << (*conns[connectionNum].backupPath.edges[conns[connectionNum].backupPath.index]).v1 << " -> " << (*conns[connectionNum].backupPath.edges[conns[connectionNum].backupPath.index]).v2 << "\n\n";
-    }else {
-        cout << "UNABLE TO ALLOCATE A VALID BACKUP PATH\n";
-    }*/
-
 }
 
 
@@ -576,7 +550,34 @@ bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection co
         edgeListIndex[currentNode] = vertexList[currentNode];
         st.pop();
     }
-    cout << "COULD NOT COMPUTE A BACKUP PATH\n";
+    //cout << "COULD NOT COMPUTE A BACKUP PATH\n";
     //TODO: We need a graceful way to handle not being able to compute a backup path.
     return false;
+}
+
+void printConnection(Connection *connection) {
+    if((*connection).validPrimary == true) {
+        //Debug output for development.
+        cout << "PRINTING CONNECTION\n";
+        printf("PRIMARY - Hops: %d, Index: %d\n",(*connection).primaryPath.hops,(*connection).primaryPath.index);
+        printf("Source: %d, Dest: %d\n",(*connection).sourceNode, (*connection).destNode);
+        for(int j = 0; j < (*connection).primaryPath.index; ++j) {
+            cout << (*(*connection).primaryPath.edges[j]).v1 << " -> ";
+        }
+        cout << (*(*connection).primaryPath.edges[(*connection).primaryPath.index]).v1 << " -> " << (*(*connection).primaryPath.edges[(*connection).primaryPath.index]).v2 << "\n\n";
+    }else {
+        cout << "COULDN'T ALLOCATE A VALID PRIMARY PATH\n";
+    }
+
+
+    if((*connection).validBackup == true) {
+        printf("BACKUP - Hops: %d, Index: %d\n",(*connection).backupPath.hops,(*connection).backupPath.index);
+        printf("Source: %d, Dest: %d\n",(*connection).sourceNode, (*connection).destNode);
+        for(int j = 0; j < (*connection).backupPath.index; ++j) {
+            cout << (*(*connection).backupPath.edges[j]).v1 << " -> ";
+        }
+        cout << (*(*connection).backupPath.edges[(*connection).backupPath.index]).v1 << " -> " << (*(*connection).backupPath.edges[(*connection).backupPath.index]).v2 << "\n\n";
+    }else {
+        cout << "UNABLE TO ALLOCATE A VALID BACKUP PATH\n";
+    }
 }
