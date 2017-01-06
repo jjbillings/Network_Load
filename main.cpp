@@ -71,7 +71,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
-void printPath(int sourceNode, int destNode, int parent[]);
 void printConnection(Connection *connection);
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections);
 
@@ -143,7 +142,7 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
 
     //Allocate the primary path (Make it the shortest path for now).
     //We start with paths that are 1 hop away, continuing with longer paths until we successfully find a valid one.
-    for(int hop = 1; hop < N_NODES; ++hop) {
+    for(int hop = 1; hop < hops; ++hop) {
         bool pathFound = computePrimaryPath(vertexList,edgeList,conns[connectionNum].sourceNode,conns[connectionNum].destNode,hop,&conns[connectionNum].primaryPath);
         if(pathFound == true) {
             //This becomes the primary path for this connection.
@@ -158,7 +157,7 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
 
     //Allocate the backup path
     //We know that we didn't find a path < primaryPath.hops.
-    for(int hop = conns[connectionNum].primaryPath.hops; hop < N_NODES; ++hop) {
+    for(int hop = conns[connectionNum].primaryPath.hops; hop < hops; ++hop) {
         bool pathFound = computeBackupPath(vertexList,edgeList,conns,connectionNum,hop);
         //TODO: Find a graceful way to handle not being able to compute a backup path.
         if(pathFound == true) {
@@ -186,10 +185,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
     //printf("-------SINGLE_PATH_%d_HOPS-------\n",hops);
     //printf("-------|%d -> %d|----------------\n",sourceNode,destNode);
 
-    //cout << sourceNode << "," << destNode << "," << maxHops << "\n";
-    int numPaths = 0;
     //initialize arrays
-    int parent[N_NODES]; //parent[i] represents the parent of node i in this path, or -1 if no parent.
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
 
     //edgeListIndex[i] contains the index into edgeList[] (aka the compact adj list) for node i.
@@ -199,7 +195,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
     //Initialize our search components
     for(int i = 0; i < N_NODES; ++i) {
-        parent[i] = -1;
         visited[i] = 0;
         edgeListIndex[i] = vertexList[i];
     }
@@ -211,7 +206,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
     st.push(sourceNode);
     visited[sourceNode] = 1;
-    parent[sourceNode] = sourceNode;
 
     LOOP:
     while(st.size() > 0) {
@@ -228,7 +222,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
             //if this edge is at max capacity (i.e. has no free channels),
             // we would want to check and see if we can share a channel with one of the paths.
-            //TODO: Verify that, since we are allocating the primary path, if channels are maxed then there's nothing we can do.
             if(edgeList[edgeListIndex[currentNode]].load == MAX_CHANNELS) {
                 //TODO: For now we just continue to the next neighbor
                 cout << "CHANNELS ARE MAXED OUT\n";
@@ -242,9 +235,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
             //If our neighbor is the desired node, AND we're at the correct path length, save this path!
             if(neighbor == destNode && currentHop == hops-1) {
-                parent[neighbor] = currentNode;
                 visited[neighbor] = 1;
-                numPaths++;
 
                 (*p).edges[(*p).index] = &edgeList[edgeListIndex[currentNode]];
 
@@ -266,7 +257,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
                 (*p).index += 1;
 
                 st.push(neighbor);
-                parent[neighbor] = currentNode;
+                //parent[neighbor] = currentNode;
                 visited[neighbor] = 1;
                 currentHop++;
 
@@ -282,7 +273,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
         //Once we've visited all of this node's neighbors, we reset it so that a
         //different path involving this node can be explored.
         visited[currentNode] = 0;
-        parent[currentNode] = -1;
 
         (*p).index -= 1;
 
@@ -336,7 +326,7 @@ bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection co
 
             //if this edge is at max capacity, we would want to check and see if we can share a channel with one of the paths.
             if(edgeList[edgeListIndex[currentNode]].load == MAX_CHANNELS) {
-                //TODO: For now we just continue to the next neighbor
+                //For now we just continue to the next neighbor
                 //cout << "CHANNELS ARE MAXED OUT\n";
                 continue;
             }
