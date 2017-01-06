@@ -17,8 +17,8 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 100
-#define MAX_CHANNELS 10
+#define NUM_CONNECTIONS 1000
+#define MAX_CHANNELS 50
 
 
 
@@ -67,7 +67,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
 void printPath(int sourceNode, int destNode, int parent[]);
-void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum);
+void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections);
 
 bool comparePath(const Path& p1, const Path& p2);
 
@@ -105,18 +105,19 @@ int main(int argc, char** argv) {
     Edge edgeList[2*N_EDGES];
     Edge reorderedEdgeList[2*N_EDGES];
 
+    int numSamples = 40;
     //init random number generator
     srand(time(NULL));
-    for(int i = 0; i < 1; ++i) {
+    for(int i = 0; i < numSamples; ++i) {
         readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
         randomConnections(vertexList,reorderedEdgeList,i);
+        //randomConnections(vertexList,edgeList,i);
     }
 
     return 0;
 }
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) {
-    int paths[NUM_CONNECTIONS][N_NODES];
     Path structPaths[NUM_CONNECTIONS];
     Connection conns[NUM_CONNECTIONS];
 
@@ -125,9 +126,6 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
     //Init our paths storage
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
         structPaths[i].index = 0; //TODO: Auto-init to 0???
-        for(int j = 0; j < N_NODES; ++j) {
-            paths[i][j] = -1;
-        }
     }
 
 
@@ -161,9 +159,10 @@ void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) 
     cout << "Number of incomplete connections: " << numIncompleteConnections << "\n";
     cout << "Number of complete connections: " << (NUM_CONNECTIONS - numIncompleteConnections) << "\n";
 
+    //exportNetworkLoad(conns,edgeList,sampleNum,numIncompleteConnections);
 }
 
-void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum) {
+void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections) {
     ofstream outputFile;
     string filename ("./load_per_edge/load_per_edge_");
     filename += to_string(sampleNum);
@@ -171,6 +170,7 @@ void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES
 
     cout << filename << "\n";
     outputFile.open(filename,ios_base::app);
+    outputFile << numIncompleteConnections << "\n";
     for(int i = 0; i < 2*N_EDGES; ++i) {
         outputFile << i << "," << edgeList[i].load << "\n";
 
