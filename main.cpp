@@ -91,12 +91,14 @@ int main(int argc, char** argv) {
 
     for(int i = 0; i < MAX_PATHS; ++i) {
         paths[i] = (struct Path*) malloc(sizeof(struct Path));
+        (*paths[i]).index = 0;
     }
     readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
     int k = computeAllPrimaryPaths(vertexList,reorderedEdgeList,0,2,N_NODES,paths);
     cout << "NUMPATHS: " << k <<"\n";
 
     for(int i = 0; i < k; ++i) {
+        cout << "PATH #" << (i+1) << ": ";
         for(int j = 0; j < (*paths[i]).index; ++j) {
             cout << (*(*paths[i]).edges[j]).v1 << " -> ";
         }
@@ -303,7 +305,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
 int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]) {
     cout << "Preparing to compute all primary paths\n";
-    cout << "S: " << sourceNode << " D: " << destNode << " H: " << hops << "\n";
     //initialize arrays
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
     int currentPath = 0;
@@ -347,8 +348,8 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
             }
 
             //If our neighbor is the desired node, AND we're at the correct path length, save this path!
-            if(neighbor == destNode && currentHop <= hops) {
-                visited[neighbor] = 1;
+            if(neighbor == destNode && currentHop < hops) {
+                //visited[neighbor] = 1;
 
                 (*p[currentPath]).edges[(*p[currentPath]).index] = &edgeList[edgeListIndex[currentNode]];
 
@@ -357,11 +358,25 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
                     (*(*p[currentPath]).edges[i]).load++;
                 }
 
+
                 (*p[currentPath]).sourceNode = sourceNode;
                 (*p[currentPath]).destNode = destNode;
                 (*p[currentPath]).hops = hops;
+
+                //Copy the whole path up until the dest node to the next path in the array.
+                (*p[currentPath+1]).sourceNode = sourceNode;
+                (*p[currentPath+1]).destNode = destNode;
+                (*p[currentPath+1]).hops = hops;
+                (*p[currentPath+1]).index = (*p[currentPath]).index-1;
+                for(int i = 0; i < (*p[currentPath]).index; ++i) {
+                    (*p[currentPath+1]).edges[i] = (*p[currentPath]).edges[i];
+                }
+
                 currentPath += 1;
-                return currentPath;
+
+                (*p[currentPath]).index += 1;
+                ++edgeListIndex[currentNode];
+                goto LOOP;
             }
 
             if(!visited[neighbor]) {
@@ -386,7 +401,6 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
         //Once we've visited all of this node's neighbors, we reset it so that a
         //different path involving this node can be explored.
         visited[currentNode] = 0;
-
         (*p[currentPath]).index -= 1;
 
         edgeListIndex[currentNode] = vertexList[currentNode];
