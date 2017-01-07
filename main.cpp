@@ -68,6 +68,8 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
 bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection conns[NUM_CONNECTIONS], int connectionNum, int hops);
 bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p);
 
+int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]);
+
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -85,13 +87,30 @@ int main(int argc, char** argv) {
     Edge edgeList[2*N_EDGES];
     Edge reorderedEdgeList[2*N_EDGES];
 
+    Path *paths[MAX_PATHS];
+
+    for(int i = 0; i < MAX_PATHS; ++i) {
+        paths[i] = (struct Path*) malloc(sizeof(struct Path));
+    }
+    readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
+    int k = computeAllPrimaryPaths(vertexList,reorderedEdgeList,0,2,N_NODES,paths);
+    cout << "NUMPATHS: " << k <<"\n";
+
+    for(int i = 0; i < k; ++i) {
+        for(int j = 0; j < (*paths[i]).index; ++j) {
+            cout << (*(*paths[i]).edges[j]).v1 << " -> ";
+        }
+        cout << (*(*paths[i]).edges[(*paths[i]).index]).v1 << " -> " << (*(*paths[i]).edges[(*paths[i]).index]).v2 << "\n\n";
+    }
+
+    /*
     //init random number generator
     srand(time(NULL));
     for(int i = 0; i < SAMPLES; ++i) {
         readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
         randomConnections(vertexList,reorderedEdgeList,i);
         //randomConnections(vertexList,edgeList,i);
-    }
+    }*/
 
     return 0;
 }
@@ -280,6 +299,100 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
         st.pop();
     }
     return false;
+}
+
+int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]) {
+    cout << "Preparing to compute all primary paths\n";
+    cout << "S: " << sourceNode << " D: " << destNode << " H: " << hops << "\n";
+    //initialize arrays
+    int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
+    int currentPath = 0;
+
+    //edgeListIndex[i] contains the index into edgeList[] (aka the compact adj list) for node i.
+    int edgeListIndex[N_NODES];
+
+    (*p[currentPath]).index = 0;
+
+    //Initialize our search components
+    for(int i = 0; i < N_NODES; ++i) {
+        visited[i] = 0;
+        edgeListIndex[i] = vertexList[i];
+    }
+
+    stack <int> st;
+    int currentNode;
+    int neighbor;
+    int currentHop = 0;
+
+    st.push(sourceNode);
+    visited[sourceNode] = 1;
+
+    LOOP:
+    while(st.size() > 0) {
+        currentNode = st.top();
+        //for each neighbor of currentNode
+        for(; edgeListIndex[currentNode] < vertexList[currentNode+1]; ++edgeListIndex[currentNode]) {
+            neighbor = edgeList[edgeListIndex[currentNode]].v2;
+            //If we're too far away from our source node, backtrack.
+            if(currentHop >= hops) {
+                goto NEXT_NODE;
+            }
+
+            //if this edge is at max capacity (i.e. has no free channels),
+            // we would want to check and see if we can share a channel with one of the paths.
+            if(edgeList[edgeListIndex[currentNode]].load == MAX_CHANNELS) {
+                //TODO: For now we just continue to the next neighbor
+                cout << "CHANNELS ARE MAXED OUT\n";
+                continue;
+            }
+
+            //If our neighbor is the desired node, AND we're at the correct path length, save this path!
+            if(neighbor == destNode && currentHop <= hops) {
+                visited[neighbor] = 1;
+
+                (*p[currentPath]).edges[(*p[currentPath]).index] = &edgeList[edgeListIndex[currentNode]];
+
+                //Now that we have the path set, increase the load on each edge.
+                for(int i = 0; i <= (*p[currentPath]).index; ++i) {
+                    (*(*p[currentPath]).edges[i]).load++;
+                }
+
+                (*p[currentPath]).sourceNode = sourceNode;
+                (*p[currentPath]).destNode = destNode;
+                (*p[currentPath]).hops = hops;
+                currentPath += 1;
+                return currentPath;
+            }
+
+            if(!visited[neighbor]) {
+
+                (*p[currentPath]).edges[(*p[currentPath]).index] = &edgeList[edgeListIndex[currentNode]];
+                (*p[currentPath]).index += 1;
+
+                st.push(neighbor);
+                //parent[neighbor] = currentNode;
+                visited[neighbor] = 1;
+                currentHop++;
+
+                //continue the while loop, but increment the ELI first.
+                ++edgeListIndex[currentNode];
+                goto LOOP;
+            }
+        }
+
+        NEXT_NODE:
+        currentHop--;
+
+        //Once we've visited all of this node's neighbors, we reset it so that a
+        //different path involving this node can be explored.
+        visited[currentNode] = 0;
+
+        (*p[currentPath]).index -= 1;
+
+        edgeListIndex[currentNode] = vertexList[currentNode];
+        st.pop();
+    }
+    return currentPath;
 }
 
 
