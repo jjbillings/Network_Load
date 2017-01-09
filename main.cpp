@@ -44,6 +44,8 @@ struct Path {
 
     int hops;
     int index;
+
+    int cost;
     //Every path that uses a particular edge just has a reference to it (not a copy), so they can each manipulate it.
     Edge *edges[N_NODES];
     bool primary;
@@ -74,6 +76,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
 void printConnection(Connection *connection);
+void printPath(Path *path);
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections);
 
 bool comparePath(const Path& p1, const Path& p2);
@@ -94,38 +97,31 @@ int main(int argc, char** argv) {
     for(int i = 0; i < MAX_PATHS; ++i) {
         paths[i] = (struct Path*) malloc(sizeof(struct Path));
         (*paths[i]).index = 0;
+        (*paths[i]).cost = 0;
     }
     readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
+
     int k = computeAllPrimaryPaths(vertexList,reorderedEdgeList,0,2,N_NODES,paths);
     cout << "NUMPATHS: " << k <<"\n";
 
     for(int i = 0; i < k; ++i) {
-        cout << "PATH #" << (i) << ": ";
-        for(int j = 0; j < (*paths[i]).index; ++j) {
-            cout << (*(*paths[i]).edges[j]).v1 << " -> ";
-        }
-        cout << (*(*paths[i]).edges[(*paths[i]).index]).v1 << " -> " << (*(*paths[i]).edges[(*paths[i]).index]).v2 << "\n\n";
+        printPath(paths[i]);
     }
 
     //for each primary path, we need to compute all possible backup paths.
     //bps will store all possible backup paths for THIS Primary Path.
     Path *bps[MAX_PATHS];
-
     for(int i = 0; i < MAX_PATHS; ++i) {
         bps[i] = (struct Path*) malloc(sizeof(struct Path));
         (*bps[i]).index = 0;
     }
+
     int bp = computeAllBackupPaths(vertexList, reorderedEdgeList, paths[0], N_NODES, bps);
     cout << "NUM_BACKUP_PATHS: " << k <<"\n";
 
     for(int i = 0; i < bp; ++i) {
-        cout << "PATH #" << (i) << ": ";
-        for(int j = 0; j < (*bps[i]).index; ++j) {
-            cout << (*(*bps[i]).edges[j]).v1 << " -> ";
-        }
-        cout << (*(*bps[i]).edges[(*bps[i]).index]).v1 << " -> " << (*(*bps[i]).edges[(*bps[i]).index]).v2 << "\n\n";
+        printPath(bps[i]);
     }
-
 
 
 
@@ -292,7 +288,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
                 (*p).sourceNode = sourceNode;
                 (*p).destNode = destNode;
                 (*p).hops = hops;
-
+                (*p).primary = true;
                 return true;
             }
 
@@ -376,12 +372,13 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
                 (*p[currentPath]).edges[(*p[currentPath]).index] = &edgeList[edgeListIndex[currentNode]];
 
                 //For now, don't increment the N_Load, becase we haven't selected this path fersure.
-                /*
+
                 for(int i = 0; i <= (*p[currentPath]).index; ++i) {
-                    (*(*p[currentPath]).edges[i]).load++;
-                }*/
+                    //(*(*p[currentPath]).edges[i]).load++;
+                    (*p[currentPath]).cost += 1;
+                }
 
-
+                (*p[currentPath]).primary = true;
                 (*p[currentPath]).sourceNode = sourceNode;
                 (*p[currentPath]).destNode = destNode;
                 (*p[currentPath]).hops = hops;
@@ -502,7 +499,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                 (*p[currentPath]).sourceNode = (*primaryPath).sourceNode;
                 (*p[currentPath]).destNode = (*primaryPath).destNode;
                 (*p[currentPath]).hops = hops;
-
+                (*p[currentPath]).primary = false;
                 //Make sure we don't use the same path for the primary and backup paths.
                 if(comparePath(*p[currentPath],*primaryPath)) {
                     goto NEXT_NODE;
@@ -834,6 +831,20 @@ void printConnection(Connection *connection) {
     }else {
         cout << "UNABLE TO ALLOCATE A VALID BACKUP PATH\n";
     }
+}
+
+void printPath(Path *path) {
+    if((*path).primary == true) {
+        cout << "Primary Path ";
+    }else {
+        cout << "Backup Path ";
+    }
+    cout << "| Cost = " << (*path).cost << "\n";
+
+    for(int j = 0; j < (*path).index; ++j) {
+        cout << (*(*path).edges[j]).v1 << " -> ";
+    }
+    cout << (*(*path).edges[(*path).index]).v1 << " -> " << (*(*path).edges[(*path).index]).v2 << "\n\n";
 }
 
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections) {
