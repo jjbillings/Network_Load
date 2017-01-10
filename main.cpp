@@ -24,16 +24,22 @@ using namespace std;
 struct Path;
 struct Edge;
 struct Connection;
+struct Connection2;
 struct Channel;
 
 struct Channel{
-    Path *backupsOnChannel[NUM_CONNECTIONS];//Realistically, there will be far fewer than NUM_CONNECTIONS
+    int numBackups;
+    //TODO: THIS SHOULD BE CONNECTION[].
+    /*We actually need to check and see if the PRIMARY path associated with the backup path on the Channel
+      is disjoint from our backup path.
+    */
+    Connection2 *backupsOnChannel[NUM_CONNECTIONS];//Realistically, there will be far fewer than NUM_CONNECTIONS
 };
 
 struct Edge {
     int v1;
     int v2;
-    int load; //load <= MAX_CHANNELS. Also, load is the sum of the primary AND backups paths using it.
+    int load; //load <= MAX_CHANNELS. Also, load is the sum of the primary AND backups paths using it. Is it backups too??????
     Channel *channels[MAX_CHANNELS];
 };
 
@@ -44,12 +50,21 @@ struct Path {
 
     int hops;
     int index;
-
     int cost;
+
     //Every path that uses a particular edge just has a reference to it (not a copy), so they can each manipulate it.
     Edge *edges[N_NODES];
     bool primary;
     bool active;
+};
+
+struct Connection2 {
+    int sourceNode;
+    int destNode;
+    bool validBackup;
+    bool validPrimary;
+    Path *backupPath;
+    Path *primaryPath;
 };
 
 struct Connection {
@@ -71,7 +86,7 @@ bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection co
 bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p);
 
 int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]);
-int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Path *p[MAX_PATHS]);
+int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS]);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -93,6 +108,7 @@ int main(int argc, char** argv) {
     Edge reorderedEdgeList[2*N_EDGES];
 
     Path *paths[MAX_PATHS];
+    Connection2 *cons[MAX_PATHS];
 
     for(int i = 0; i < MAX_PATHS; ++i) {
         paths[i] = (struct Path*) malloc(sizeof(struct Path));
@@ -106,21 +122,37 @@ int main(int argc, char** argv) {
 
     for(int i = 0; i < k; ++i) {
         printPath(paths[i]);
+        cons[i] = (struct Connection2*) malloc(sizeof(struct Connection2));
+        (*cons[i]).sourceNode = (*paths[i]).sourceNode;
+        (*cons[i]).destNode = (*paths[i]).destNode;
+        (*cons[i]).validBackup = false;
+        (*cons[i]).validPrimary = false;
+        (*cons[i]).primaryPath = paths[i];
     }
+
 
     //for each primary path, we need to compute all possible backup paths.
     //bps will store all possible backup paths for THIS Primary Path.
-    Path *bps[MAX_PATHS];
+    Connection2 *bps[MAX_PATHS];
+    
     for(int i = 0; i < MAX_PATHS; ++i) {
-        bps[i] = (struct Path*) malloc(sizeof(struct Path));
-        (*bps[i]).index = 0;
+        bps[i] = (struct Connection2*) malloc(sizeof(struct Connection2));
+        //THey all have the same primary path
+        (*bps[i]).sourceNode = (*paths[0]).sourceNode;
+        (*bps[i]).destNode = (*paths[0]).destNode;
+        (*bps[i]).validBackup = false;
+        (*bps[i]).validPrimary = false;
+        (*bps[i]).primaryPath = paths[0];
+        (*bps[i]).backupPath = (struct Path*) malloc(sizeof(struct Path));
+        (*(*bps[i]).backupPath).index = 0;
     }
 
     int bp = computeAllBackupPaths(vertexList, reorderedEdgeList, paths[0], N_NODES, bps);
     cout << "NUM_BACKUP_PATHS: " << k <<"\n";
 
     for(int i = 0; i < bp; ++i) {
-        printPath(bps[i]);
+        printPath((*bps[i]).primaryPath);
+        printPath((*bps[i]).backupPath);
     }
 
 
@@ -429,10 +461,10 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
     return currentPath;
 }
 
-int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Path *p[MAX_PATHS]) {
+int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS]) {
     cout << "Preparing to compute all backup paths\n";
-
     cout << "PP: S: " << (*primaryPath).sourceNode << " D: " << (*primaryPath).destNode << "\n";
+
     //initialize arrays
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
     int currentPath = 0;
@@ -440,7 +472,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
     //edgeListIndex[i] contains the index into edgeList[] (aka the compact adj list) for node i.
     int edgeListIndex[N_NODES];
 
-    (*p[currentPath]).index = 0;
+    (*(*p[currentPath]).backupPath).index = 0;
 
     //Initialize our search components
     for(int i = 0; i < N_NODES; ++i) {
@@ -463,18 +495,32 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
         for(; edgeListIndex[currentNode] < vertexList[currentNode+1]; ++edgeListIndex[currentNode]) {
             neighbor = edgeList[edgeListIndex[currentNode]].v2;
 
-            //Ensure that that we do not use ANY edges that the primary path uses.
-            for(int k = 0; k <= (*primaryPath).index; ++k) {
-                if(&edgeList[edgeListIndex[currentNode]] == (*primaryPath).edges[k]) {
-                    //cout <<"uh-oh, we can't use " << edgeList[edgeListIndex[currentNode]].v1 << " -> " << neighbor << "\n";
-                    goto END_OF_LOOP;
-                }
-            }
-
             //If we're too far away from our source node, backtrack.
             if(currentHop >= hops) {
                 goto NEXT_NODE;
             }
+
+            //Ensure that that we do not use ANY edges that the primary path uses.
+            for(int k = 0; k <= (*primaryPath).index; ++k) {
+                if(&edgeList[edgeListIndex[currentNode]] == (*primaryPath).edges[k]) {
+                    goto END_OF_LOOP;
+                }
+            }
+
+            //For every channel on this edge, if every backup path allocated for this channel
+            //is disjoint from current backup path candidate, then this edge is free!
+            for(int ch = 0; ch < edgeList[edgeListIndex[currentNode]].load; ++ch) {
+
+                /*for(int bup = 0; bup < (*edgeList[edgeListIndex[currentNode]].channels[ch]).backupsOnChannel[bup]; ++bup) {
+
+
+                    if((*(*edgeList[edgeListIndex[currentNode]].channels[ch]).backupsOnChannel[bup]).primary == true) {
+
+                    }
+                }*/
+
+            }
+
 
             //if this edge is at max capacity (i.e. has no free channels),
             // we would want to check and see if we can share a channel with one of the paths.
@@ -487,7 +533,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
             //If our neighbor is the desired node, AND we're at the correct path length, save this path!
             if(neighbor == (*primaryPath).destNode && currentHop < hops) {
 
-                (*p[currentPath]).edges[(*p[currentPath]).index] = &edgeList[edgeListIndex[currentNode]];
+                (*(*p[currentPath]).backupPath).edges[(*(*p[currentPath]).backupPath).index] = &edgeList[edgeListIndex[currentNode]];
 
                 //For now, don't increment the N_Load, becase we haven't selected this path fersure.
                 /*
@@ -496,35 +542,35 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                 }*/
 
 
-                (*p[currentPath]).sourceNode = (*primaryPath).sourceNode;
-                (*p[currentPath]).destNode = (*primaryPath).destNode;
-                (*p[currentPath]).hops = hops;
-                (*p[currentPath]).primary = false;
+                (*(*p[currentPath]).backupPath).sourceNode = (*primaryPath).sourceNode;
+                (*(*p[currentPath]).backupPath).destNode = (*primaryPath).destNode;
+                (*(*p[currentPath]).backupPath).hops = hops;
+                (*(*p[currentPath]).backupPath).primary = false;
                 //Make sure we don't use the same path for the primary and backup paths.
-                if(comparePath(*p[currentPath],*primaryPath)) {
+                if(comparePath((*(*p[currentPath]).backupPath),*primaryPath)) {
                     goto NEXT_NODE;
                 }
 
                 //Copy the whole path up until the dest node to the next path in the array.
-                (*p[currentPath+1]).sourceNode = (*primaryPath).sourceNode;
-                (*p[currentPath+1]).destNode = (*primaryPath).destNode;
-                (*p[currentPath+1]).hops = hops;
-                (*p[currentPath+1]).index = (*p[currentPath]).index-1;
-                for(int i = 0; i < (*p[currentPath]).index; ++i) {
-                    (*p[currentPath+1]).edges[i] = (*p[currentPath]).edges[i];
+                (*(*p[currentPath+1]).backupPath).sourceNode = (*primaryPath).sourceNode;
+                (*(*p[currentPath+1]).backupPath).destNode = (*primaryPath).destNode;
+                (*(*p[currentPath+1]).backupPath).hops = hops;
+                (*(*p[currentPath+1]).backupPath).index = (*(*p[currentPath]).backupPath).index-1;
+                for(int i = 0; i < (*(*p[currentPath]).backupPath).index; ++i) {
+                    (*(*p[currentPath+1]).backupPath).edges[i] = (*(*p[currentPath]).backupPath).edges[i];
                 }
 
                 currentPath += 1;
 
-                (*p[currentPath]).index += 1;
+                (*(*p[currentPath]).backupPath).index += 1;
                 ++edgeListIndex[currentNode];
                 goto LOOP;
             }
 
             if(!visited[neighbor]) {
 
-                (*p[currentPath]).edges[(*p[currentPath]).index] = &edgeList[edgeListIndex[currentNode]];
-                (*p[currentPath]).index += 1;
+                (*(*p[currentPath]).backupPath).edges[(*(*p[currentPath]).backupPath).index] = &edgeList[edgeListIndex[currentNode]];
+                (*(*p[currentPath]).backupPath).index += 1;
 
                 st.push(neighbor);
                 //parent[neighbor] = currentNode;
@@ -545,7 +591,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
         //Once we've visited all of this node's neighbors, we reset it so that a
         //different path involving this node can be explored.
         visited[currentNode] = 0;
-        (*p[currentPath]).index -= 1;
+        (*(*p[currentPath]).backupPath).index -= 1;
 
         edgeListIndex[currentNode] = vertexList[currentNode];
         st.pop();
