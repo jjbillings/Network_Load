@@ -63,6 +63,7 @@ struct Path {
 struct Connection2 {
     int sourceNode;
     int destNode;
+    int combinedCost;
     bool validBackup;
     bool validPrimary;
     Path *backupPath;
@@ -81,6 +82,7 @@ struct Connection {
 
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum);
+void allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection);
 
 bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]);
 
@@ -108,80 +110,11 @@ int main(int argc, char** argv) {
     int vertexList[N_NODES+1];
     Edge edgeList[2*N_EDGES];
     Edge reorderedEdgeList[2*N_EDGES];
+    Connection2 cons[NUM_CONNECTIONS];
 
-    Path *paths[MAX_PATHS];
-    Connection2 *cons[MAX_PATHS];
-
-    for(int i = 0; i < MAX_PATHS; ++i) {
-        paths[i] = (struct Path*) malloc(sizeof(struct Path));
-        (*paths[i]).index = 0;
-        (*paths[i]).cost = 0;
-    }
     readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
 
-    int k = computeAllPrimaryPaths(vertexList,reorderedEdgeList,0,4,N_NODES,paths);
-    cout << "NUMPATHS: " << k <<"\n";
-
-    for(int i = 0; i < k; ++i) {
-        //printPath(paths[i]);
-        cons[i] = (struct Connection2*) malloc(sizeof(struct Connection2));
-        (*cons[i]).sourceNode = (*paths[i]).sourceNode;
-        (*cons[i]).destNode = (*paths[i]).destNode;
-        (*cons[i]).validBackup = false;
-        (*cons[i]).validPrimary = true;
-        (*cons[i]).primaryPath = paths[i];
-    }
-
-
-    //for each primary path, we need to compute all possible backup paths.
-    //bps will store all possible backup paths for THIS Primary Path.
-    Connection2 *bps[MAX_PATHS];
-    for(int j = 0; j < k; ++j) {
-        for(int i = 0; i < MAX_PATHS; ++i) {
-            bps[i] = (struct Connection2*) malloc(sizeof(struct Connection2));
-            //THey all have the same primary path
-            (*bps[i]).sourceNode = (*paths[j]).sourceNode;
-            (*bps[i]).destNode = (*paths[j]).destNode;
-            (*bps[i]).validBackup = false;
-            (*bps[i]).validPrimary = false;
-            (*bps[i]).primaryPath = paths[j];
-            (*bps[i]).backupPath = (struct Path*) malloc(sizeof(struct Path));
-            (*(*bps[i]).backupPath).index = 0;
-        }
-
-        int bp = computeAllBackupPaths(vertexList, reorderedEdgeList, paths[j], N_NODES, bps);
-        //cout << "NUM_BACKUP_PATHS: " << bp <<"\n";
-
-        /*
-        for(int i = 0; i < bp; ++i) {
-            printPath((*bps[i]).primaryPath);
-            printPath((*bps[i]).backupPath);
-        }*/
-
-        //For now, give the primary path the first backup path
-        //TODO: Eventually, find the cheapest of all possible backup paths.
-        (*cons[j]).backupPath = (*bps[0]).backupPath;
-        for(int ed = 0; ed <= (*(*cons[j]).backupPath).index; ++ ed) {
-
-            if((*(*cons[j]).backupPath).freeEdges[ed] == false) {
-                (*(*cons[j]).backupPath).cost += 1;
-            }
-
-            /*This is for when we actually select a connection combo.
-            if((*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups == 0) {
-                (*(*(*cons[j]).backupPath).edges[ed]).load += 1;
-            }
-            (*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].backupsOnChannel[(*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups] = cons[j];
-            (*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups += 1;
-            */
-        }
-
-        printPath((*cons[j]).primaryPath);
-        printPath((*cons[j]).backupPath);
-
-
-    }
-
+    allPrimaryBackupCombos(vertexList,reorderedEdgeList,0,4,cons[0]);
 
     /*
     for(int m = 0; m < 2*N_EDGES; ++m) {
@@ -205,6 +138,101 @@ int main(int argc, char** argv) {
     }*/
 
     return 0;
+}
+
+void allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection) {
+    Path *paths[MAX_PATHS];
+    Connection2 *cons[MAX_PATHS];
+
+    for(int i = 0; i < MAX_PATHS; ++i) {
+        paths[i] = (struct Path*) malloc(sizeof(struct Path));
+        (*paths[i]).index = 0;
+        (*paths[i]).cost = 0;
+    }
+
+
+    //TODO: have computeAllPrimaryPaths store paths directly in cons[] array, eliminating the need for the paths[] array.
+    int k = computeAllPrimaryPaths(vertexList,edgeList,sourceNode,destNode,N_NODES,paths);
+    cout << "NUMPATHS: " << k <<"\n";
+
+    for(int i = 0; i < k; ++i) {
+        //printPath(paths[i]);
+        cons[i] = (struct Connection2*) malloc(sizeof(struct Connection2));
+        (*cons[i]).sourceNode = (*paths[i]).sourceNode;
+        (*cons[i]).destNode = (*paths[i]).destNode;
+        (*cons[i]).validBackup = false;
+        (*cons[i]).validPrimary = true;
+        (*cons[i]).primaryPath = paths[i];
+    }
+
+
+    //for each primary path, we need to compute all possible backup paths.
+    //bps will store all possible backup paths for THIS Primary Path.
+    Connection2 *bps[MAX_PATHS];
+    for(int j = 0; j < k; ++j) {
+
+        //Allocate storage for potential backup paths.
+        for(int i = 0; i < MAX_PATHS; ++i) {
+            bps[i] = (struct Connection2*) malloc(sizeof(struct Connection2));
+            //THey all have the same primary path
+            (*bps[i]).sourceNode = (*paths[j]).sourceNode;
+            (*bps[i]).destNode = (*paths[j]).destNode;
+            (*bps[i]).validBackup = false;
+            (*bps[i]).validPrimary = false;
+            (*bps[i]).primaryPath = paths[j];
+            (*bps[i]).backupPath = (struct Path*) malloc(sizeof(struct Path));
+            (*(*bps[i]).backupPath).index = 0;
+        }
+
+        int bp = computeAllBackupPaths(vertexList, edgeList, paths[j], N_NODES, bps);
+        //cout << "NUM_BACKUP_PATHS: " << bp <<"\n";
+
+        //For now, give the primary path the first backup path
+        //TODO: Eventually, find the cheapest of all possible backup paths.
+        /*(*cons[j]).backupPath = (*bps[0]).backupPath;
+        for(int ed = 0; ed <= (*(*cons[j]).backupPath).index; ++ ed) {
+
+            if((*(*cons[j]).backupPath).freeEdges[ed] == false) {
+                (*(*cons[j]).backupPath).cost += 1;
+            }
+
+            //This is for when we actually select a connection combo.
+            if((*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups == 0) {
+                (*(*(*cons[j]).backupPath).edges[ed]).load += 1;
+            }
+            (*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].backupsOnChannel[(*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups] = cons[j];
+            (*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups += 1;
+
+        }*/
+
+        //Compute the cost of each backup path.
+        for(int backup = 0; backup < bp; ++backup) {
+            for(int i = 0; i <= (*(*bps[backup]).backupPath).index; ++i) {
+                if((*(*bps[backup]).backupPath).freeEdges[i] == false) {
+                    (*(*bps[backup]).backupPath).cost += 1;
+                }
+            }
+        }
+
+        //Find the "Cheapest" backup path for THIS primary path
+        int minCost = 100000;
+        Path *cheapest;
+        for(int backup = 0; backup < bp; ++backup) {
+            if((*(*bps[backup]).backupPath).cost < minCost) {
+                cheapest = (*bps[backup]).backupPath;
+            }
+        }
+
+        (*cons[j]).backupPath = cheapest;
+        (*cons[j]).validBackup = true;
+
+        (*cons[j]).combinedCost = (*(*cons[j]).backupPath).cost + (*(*cons[j]).primaryPath).cost;
+
+        printPath((*cons[j]).primaryPath);
+        printPath((*cons[j]).backupPath);
+
+
+    }
 }
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) {
