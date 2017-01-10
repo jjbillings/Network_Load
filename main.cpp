@@ -82,7 +82,7 @@ struct Connection {
 
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum);
-void allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection);
+Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection);
 
 bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hops, int connectionNum, Connection conns[NUM_CONNECTIONS]);
 
@@ -114,8 +114,37 @@ int main(int argc, char** argv) {
 
     readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
 
-    allPrimaryBackupCombos(vertexList,reorderedEdgeList,0,4,cons[0]);
+    cons[0] = allPrimaryBackupCombos(vertexList,reorderedEdgeList,0,4,cons[0]);
+    cout << "SELECTED\n";
+    printPath(cons[0].primaryPath);
+    printPath(cons[0].backupPath);
 
+    //Increment the network load; put the backup on the channels
+    for(int i = 0; i <= (*cons[0].primaryPath).index; ++i) {
+        //Every edge in the primary path gets its load increased
+        (*(*cons[0].primaryPath).edges[i]).load += 1;
+    }
+
+    for(int i = 0; i <= (*cons[0].backupPath).index; ++i) {
+        //Temp
+        Edge *e = (*cons[0].backupPath).edges[i];
+        int cNum = (*cons[0].backupPath).channelNum[i];
+
+        //first path to use this Edge
+        if(cNum == 0 || (*cons[0].backupPath).freeEdges[i] == false) {
+            (*e).load += 1;
+        }
+
+        //Marks that the connection is protected on this channel.
+        (*e).channels[cNum].backupsOnChannel[(*e).channels[cNum].numBackups] = &cons[0];
+        (*e).channels[cNum].numBackups += 1;
+    }
+
+
+    cons[1] = allPrimaryBackupCombos(vertexList,reorderedEdgeList,0,7,cons[0]);
+    cout << "SELECTED\n";
+    printPath(cons[1].primaryPath);
+    printPath(cons[1].backupPath);
     /*
     for(int m = 0; m < 2*N_EDGES; ++m) {
         cout << "LOAD: " << m << ": " << reorderedEdgeList[m].load << " | ";
@@ -140,7 +169,8 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection) {
+
+Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection) {
     Path *paths[MAX_PATHS];
     Connection2 *cons[MAX_PATHS];
 
@@ -153,7 +183,7 @@ void allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourc
 
     //TODO: have computeAllPrimaryPaths store paths directly in cons[] array, eliminating the need for the paths[] array.
     int k = computeAllPrimaryPaths(vertexList,edgeList,sourceNode,destNode,N_NODES,paths);
-    cout << "NUMPATHS: " << k <<"\n";
+    //cout << "NUMPATHS: " << k <<"\n";
 
     for(int i = 0; i < k; ++i) {
         //printPath(paths[i]);
@@ -228,11 +258,26 @@ void allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourc
 
         (*cons[j]).combinedCost = (*(*cons[j]).backupPath).cost + (*(*cons[j]).primaryPath).cost;
 
-        printPath((*cons[j]).primaryPath);
-        printPath((*cons[j]).backupPath);
+        //printPath((*cons[j]).primaryPath);
+        //printPath((*cons[j]).backupPath);
 
 
     }
+    //Select the cheapest primary/backup combo.
+    //Find the "Cheapest" backup/primary combo.
+    int minCost = 100000;
+    Connection2 *cheapest;
+    for(int c = 0; c < k; ++c) {
+        if((*cons[c]).combinedCost < minCost) {
+            cheapest = cons[c];
+        }
+    }
+
+    cout << "CHEAPEST COMBO:\n";
+    printPath((*cheapest).primaryPath);
+    printPath((*cheapest).backupPath);
+    //Testing
+    return *cheapest;
 }
 
 void randomConnections(int vertexList[],Edge edgeList[2*N_EDGES],int sampleNum) {
@@ -422,7 +467,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 }
 
 int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]) {
-    cout << "Preparing to compute all primary paths\n";
+    //cout << "Preparing to compute all primary paths\n";
     //initialize arrays
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
     int currentPath = 0;
