@@ -29,10 +29,6 @@ struct Channel;
 
 struct Channel{
     int numBackups; //total protected;
-    //TODO: THIS SHOULD BE CONNECTION[].
-    /*We actually need to check and see if the PRIMARY path associated with the backup path on the Channel
-      is disjoint from our backup path.
-    */
     Connection2 *backupsOnChannel[NUM_CONNECTIONS];//Realistically, there will be far fewer than NUM_CONNECTIONS
 };
 
@@ -40,6 +36,7 @@ struct Edge {
     int v1;
     int v2;
     int load; //load <= MAX_CHANNELS. Also, load is the sum of the primary AND backups paths using it. Is it backups too??????
+    //TODO: Switch to a 2D array of channels PARALLEL to the edgeList? may help avoid the seg fault.
     Channel channels[MAX_CHANNELS];
 };
 
@@ -54,8 +51,8 @@ struct Path {
 
     //Every path that uses a particular edge just has a reference to it (not a copy), so they can each manipulate it.
     Edge *edges[N_NODES];
-    bool freeEdges[N_NODES];
-    int channelNum[N_NODES];
+    bool freeEdges[N_NODES]; //whether or not that edge has a cost of 0
+    int channelNum[N_NODES]; //Channel number for each edge that it uses
     bool primary;
     bool active;
 };
@@ -94,6 +91,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
+void increaseNetworkLoad(Connection2 *connection);
 void printConnection(Connection *connection);
 void printPath(Path *path);
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections);
@@ -114,48 +112,47 @@ int main(int argc, char** argv) {
 
     readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
 
-    cons[0] = allPrimaryBackupCombos(vertexList,reorderedEdgeList,0,4,cons[0]);
+
+
+    srand(time(NULL));
+
+    for(int x = 0; x < 4; ++x) {
+        int s = rand() % N_NODES;
+        int d = rand() % N_NODES;
+        while(s == d) {
+            s = rand() % N_NODES;
+            d = rand() % N_NODES;
+        }
+
+        cons[x] = allPrimaryBackupCombos(vertexList,edgeList,s,d,cons[0]);
+        printPath(cons[x].primaryPath);
+        printPath(cons[x].backupPath);
+        increaseNetworkLoad(&cons[x]);
+    }
+    /*
+    cons[0] = allPrimaryBackupCombos(vertexList,edgeList,0,4,cons[0]);
     cout << "SELECTED\n";
     printPath(cons[0].primaryPath);
     printPath(cons[0].backupPath);
-
-    //Increment the network load; put the backup on the channels
-    for(int i = 0; i <= (*cons[0].primaryPath).index; ++i) {
-        //Every edge in the primary path gets its load increased
-        (*(*cons[0].primaryPath).edges[i]).load += 1;
-    }
-
-    for(int i = 0; i <= (*cons[0].backupPath).index; ++i) {
-        //Temp
-        Edge *e = (*cons[0].backupPath).edges[i];
-        int cNum = (*cons[0].backupPath).channelNum[i];
-
-        //first path to use this Edge
-        if(cNum == 0 || (*cons[0].backupPath).freeEdges[i] == false) {
-            (*e).load += 1;
-        }
-
-        //Marks that the connection is protected on this channel.
-        (*e).channels[cNum].backupsOnChannel[(*e).channels[cNum].numBackups] = &cons[0];
-        (*e).channels[cNum].numBackups += 1;
-    }
+    increaseNetworkLoad(&cons[0]);
 
 
-    cons[1] = allPrimaryBackupCombos(vertexList,reorderedEdgeList,0,7,cons[0]);
+    cons[1] = allPrimaryBackupCombos(vertexList,edgeList,0,7,cons[0]);
     cout << "SELECTED\n";
     printPath(cons[1].primaryPath);
     printPath(cons[1].backupPath);
-    /*
+    increaseNetworkLoad(&cons[1]);*/
+
     for(int m = 0; m < 2*N_EDGES; ++m) {
-        cout << "LOAD: " << m << ": " << reorderedEdgeList[m].load << " | ";
-        if(reorderedEdgeList[m].load > 0) {
-            for(int c = 0; c < reorderedEdgeList[m].load; ++c) {
-                cout << "C" << c << ": " << reorderedEdgeList[m].channels[c].numBackups << " ";
+        cout << "LOAD: " << edgeList[m].v1 << " -> " << edgeList[m].v2 << ": " << edgeList[m].load << " | ";
+        if(edgeList[m].load > 0) {
+            for(int c = 0; c < edgeList[m].load; ++c) {
+                cout << "C" << c << ": " << edgeList[m].channels[c].numBackups << " ";
             }
         }
         cout << "\n";
 
-    }*/
+    }
 
     /*
     //init random number generator
@@ -169,6 +166,34 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+void increaseNetworkLoad(Connection2 *connection) {
+    //Increment the network load; put the backup on the channels
+    for(int i = 0; i <= (*(*connection).primaryPath).index; ++i) {
+        //Every edge in the primary path gets its load increased
+        (*(*(*connection).primaryPath).edges[i]).channels[(*(*(*connection).primaryPath).edges[i]).load].numBackups = 0;
+        (*(*(*connection).primaryPath).edges[i]).load += 1;
+
+    }
+
+    for(int i = 0; i <= (*(*connection).backupPath).index; ++i) {
+        //Temp
+        Edge *e = (*(*connection).backupPath).edges[i];
+        int cNum = (*(*connection).backupPath).channelNum[i];
+
+        //first path to use this Edge
+        if(cNum == 0 || (*(*connection).backupPath).freeEdges[i] == false) {
+            (*e).load += 1;
+        }
+
+        //Marks that the connection is protected on this channel.
+        (*e).channels[cNum].backupsOnChannel[(*e).channels[cNum].numBackups] = connection;
+        cout << "CHANNEL " << cNum << ", numBackups: " << (*e).channels[cNum].numBackups << "\n";
+        (*e).channels[cNum].numBackups += 1;
+        cout << "CHANNEL " << cNum << ", numBackups: " << (*e).channels[cNum].numBackups << "\n";
+        //(*e).channels[cNum+1].numBackups = 0;
+    }
+
+}
 
 Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode, Connection2 selectedConnection) {
     Path *paths[MAX_PATHS];
@@ -193,7 +218,9 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         (*cons[i]).validBackup = false;
         (*cons[i]).validPrimary = true;
         (*cons[i]).primaryPath = paths[i];
+        (*cons[i]).combinedCost = (*(*cons[i]).primaryPath).cost; //TODO: probs remove
     }
+
 
 
     //for each primary path, we need to compute all possible backup paths.
@@ -217,24 +244,6 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         int bp = computeAllBackupPaths(vertexList, edgeList, paths[j], N_NODES, bps);
         //cout << "NUM_BACKUP_PATHS: " << bp <<"\n";
 
-        //For now, give the primary path the first backup path
-        //TODO: Eventually, find the cheapest of all possible backup paths.
-        /*(*cons[j]).backupPath = (*bps[0]).backupPath;
-        for(int ed = 0; ed <= (*(*cons[j]).backupPath).index; ++ ed) {
-
-            if((*(*cons[j]).backupPath).freeEdges[ed] == false) {
-                (*(*cons[j]).backupPath).cost += 1;
-            }
-
-            //This is for when we actually select a connection combo.
-            if((*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups == 0) {
-                (*(*(*cons[j]).backupPath).edges[ed]).load += 1;
-            }
-            (*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].backupsOnChannel[(*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups] = cons[j];
-            (*(*(*cons[j]).backupPath).edges[ed]).channels[(*(*cons[j]).backupPath).channelNum[ed]].numBackups += 1;
-
-        }*/
-
         //Compute the cost of each backup path.
         for(int backup = 0; backup < bp; ++backup) {
             for(int i = 0; i <= (*(*bps[backup]).backupPath).index; ++i) {
@@ -250,6 +259,7 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         for(int backup = 0; backup < bp; ++backup) {
             if((*(*bps[backup]).backupPath).cost < minCost) {
                 cheapest = (*bps[backup]).backupPath;
+                minCost = (*cheapest).cost;
             }
         }
 
@@ -257,26 +267,18 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         (*cons[j]).validBackup = true;
 
         (*cons[j]).combinedCost = (*(*cons[j]).backupPath).cost + (*(*cons[j]).primaryPath).cost;
-
-        //printPath((*cons[j]).primaryPath);
-        //printPath((*cons[j]).backupPath);
-
-
     }
+
     //Select the cheapest primary/backup combo.
-    //Find the "Cheapest" backup/primary combo.
     int minCost = 100000;
     Connection2 *cheapest;
     for(int c = 0; c < k; ++c) {
         if((*cons[c]).combinedCost < minCost) {
+            minCost = (*cons[c]).combinedCost;
             cheapest = cons[c];
         }
     }
 
-    cout << "CHEAPEST COMBO:\n";
-    printPath((*cheapest).primaryPath);
-    printPath((*cheapest).backupPath);
-    //Testing
     return *cheapest;
 }
 
@@ -576,6 +578,22 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
     //cout << "Preparing to compute all backup paths\n";
     //cout << "PP: S: " << (*primaryPath).sourceNode << " D: " << (*primaryPath).destNode << "\n";
 
+    for(int i = 0; i < 2*N_EDGES; ++i) {
+        for(int j = 0; j < MAX_CHANNELS; ++ j){
+            if(edgeList[i].channels[j].numBackups > 0) {
+                cout << edgeList[i].channels[j].numBackups << " ";
+            }else {
+                goto EH;
+            }
+
+        }
+        cout << "\n";
+        EH:
+        cout <<"";
+    }
+    //cout <<"press enter...\n";
+    //cin.get();
+
     //initialize arrays
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
     int currentPath = 0;
@@ -625,17 +643,18 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
             //is disjoint from current backup path candidate, then this edge is free!
             //for each channel on this edge
             for(int ch = 0; ch < edgeList[edgeListIndex[currentNode]].load; ++ch) {
-                cout << "NUMBACKUPS: " << edgeList[edgeListIndex[currentNode]].channels[ch].numBackups << "\n";
+                //cout << "NUMBACKUPS: " << edgeList[edgeListIndex[currentNode]].channels[ch].numBackups << "\n";
                 DEER_GOD:
                 //Check every connection currently on protected on the channel
                 for(int bup = 0; bup < edgeList[edgeListIndex[currentNode]].channels[ch].numBackups; ++bup) {
+
                     //for each edge of the protected connections primary path
                     for(int e = 0; e <= (*(*edgeList[edgeListIndex[currentNode]].channels[ch].backupsOnChannel[bup]).primaryPath).index; ++ e) {
                         //see if its the same edge as used by our primary path.
                         for(int te = 0; te <=(*(*p[currentPath]).primaryPath).index; ++te ) {
 
                             if((*(*edgeList[edgeListIndex[currentNode]].channels[ch].backupsOnChannel[bup]).primaryPath).edges[e] == (*(*p[currentPath]).primaryPath).edges[te]) {
-                                cout << "NON-DISJOINT PRIMARY PATHS\n";
+                                //cout << "NON-DISJOINT PRIMARY PATHS\n";
                                 channelProb = true;
                                 //If we run into a problem, go to the next channel.
                                 ch+=1;
@@ -651,7 +670,6 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                 cNum = ch;
                 goto DEER_GOD2;
             }
-
             DEER_GOD2:
             if(channelProb == false) {
                 (*(*p[currentPath]).backupPath).freeEdges[(*(*p[currentPath]).backupPath).index] = true;
@@ -940,6 +958,11 @@ void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],E
                 compactEdgeList[counter].v1 = i;
                 compactEdgeList[counter].v2 = j;
                 compactEdgeList[counter].load = 0;
+                for(int x = 0; x < MAX_CHANNELS; ++x) {
+                    compactEdgeList[counter].channels[x].numBackups = 0;
+                }
+
+
                 counter++;
             }
         }
