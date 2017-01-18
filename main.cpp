@@ -103,6 +103,7 @@ int vertexList[N_NODES+1];
 Edge edgeList[2*N_EDGES];
 Edge reorderedEdgeList[2*N_EDGES];
 Connection2 cons[NUM_CONNECTIONS];
+Channel channels[2*N_EDGES][MAX_CHANNELS];
 
 
 /*
@@ -111,8 +112,13 @@ Connection2 cons[NUM_CONNECTIONS];
  *to the "bottom" of the stack, so we end up computing the path with high-degree nodes in it...
  */
 int main(int argc, char** argv) {
-    Channel channels[2*N_EDGES][MAX_CHANNELS];
-    cout << "AFTER COMBOS:\n";
+
+    int testInt = 0;
+
+    testInt += 44;
+    cout << testInt << "\n";
+
+    //cout << "AFTER COMBOS:\n";
     for(int f = 0; f < (2*N_EDGES); ++f){
         for(int g = 0; g < MAX_CHANNELS; ++g) {
             channels[f][g].numBackups = 0;
@@ -122,16 +128,18 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    for(int x = 0; x < 10; ++x) {
-        int s = rand() % N_NODES;
-        int d = rand() % N_NODES;
-        while(s == d) {
-            s = rand() % N_NODES;
-            d = rand() % N_NODES;
-        }
+    for(int x = 0; x < 5; ++x) {
+        //int s = rand() % N_NODES;
+        //int d = rand() % N_NODES;
+        int s = 0;
+        int d = 9;
+        //while(s == d) {
+        //    s = rand() % N_NODES;
+        //    d = rand() % N_NODES;
+        //}
 
-        cons[x] = allPrimaryBackupCombos(vertexList,edgeList,s,d,cons[0],channels);
-        cout << "AFTER COMBOS:\n";
+        cons[x] = allPrimaryBackupCombos(vertexList,edgeList,s,d,cons[x],channels);
+        //cout << "AFTER COMBOS:\n";
         //for(int f = 0; f < (2*N_EDGES); ++f){
         //    for(int g = 0; g < MAX_CHANNELS; ++g) {
         //        cout << channels[f][g].numBackups << " ";
@@ -226,7 +234,7 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
         int numbs = channels[en][cNum].numBackups;
         channels[en][cNum].backupsOnChannel[numbs] = connection;
         //channels[en][cNum].numBackups++;
-        channels[en][cNum].numBackups = 1;
+        channels[en][cNum].numBackups += 1;
 
     }
 
@@ -243,7 +251,7 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         (*paths[i]).cost = 0;
     }
 
-    cout << "ABOUT TO COMPUTE ALL PRIMARIES\n";
+    //cout << "ABOUT TO COMPUTE ALL PRIMARIES\n";
     //TODO: have computeAllPrimaryPaths store paths directly in cons[] array, eliminating the need for the paths[] array.
     int k = computeAllPrimaryPaths(vertexList,edgeList,sourceNode,destNode,N_NODES,paths);
     //cout << "NUMPATHS: " << k <<"\n";
@@ -320,7 +328,6 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         }
     }
     Connection2 ret = cheapestCon;
-
 
 
 
@@ -677,7 +684,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                 //Check every connection currently on protected on the channel
                 //for(int bup = 0; bup < edgeList[edgeListIndex[currentNode]].channels[ch].numBackups; ++bup) {
                 for(int bup = 0; bup < channels[edgeListIndex[currentNode]][ch].numBackups; ++bup) {
-                    cout << "ATTEMPTING TO USE BACKUP: " << bup << "/" << channels[edgeListIndex[currentNode]][ch].numBackups << "\n";
+                    //cout << "ATTEMPTING TO USE BACKUP: " << bup << "/" << channels[edgeListIndex[currentNode]][ch].numBackups << "\n";
                     //for(int f = 0; f < (2*N_EDGES); ++f) {
                     //    for(int g = 0; g < 10; ++ g) {
                     //        cout << channels[f][g].numBackups << " ";
