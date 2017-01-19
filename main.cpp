@@ -17,7 +17,7 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 1
+#define NUM_CONNECTIONS 1000
 #define MAX_CHANNELS 10
 #define SAMPLES 1
 
@@ -128,55 +128,20 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    for(int x = 0; x < 5; ++x) {
-        //int s = rand() % N_NODES;
-        //int d = rand() % N_NODES;
-        int s = 0;
-        int d = 9;
-        //while(s == d) {
-        //    s = rand() % N_NODES;
-        //    d = rand() % N_NODES;
-        //}
+    for(int x = 0; x < 10; ++x) {
+        int s = rand() % N_NODES;
+        int d = rand() % N_NODES;
+        //int s = 0;
+        //int d = 9;
+        while(s == d) {
+            s = rand() % N_NODES;
+            d = rand() % N_NODES;
+        }
 
         cons[x] = allPrimaryBackupCombos(vertexList,edgeList,s,d,cons[x],channels);
-        //cout << "AFTER COMBOS:\n";
-        //for(int f = 0; f < (2*N_EDGES); ++f){
-        //    for(int g = 0; g < MAX_CHANNELS; ++g) {
-        //        cout << channels[f][g].numBackups << " ";
-        //    }
-        //    cout << "\n";
-        //}
-        //printPath(cons[x].primaryPath);
         printPath(cons[x].backupPath);
-        //cout << "BEFORE INC_NET_LD:\n";
-        //for(int f = 0; f < (2*N_EDGES); ++f){
-        //    for(int g = 0; g < MAX_CHANNELS; ++g) {
-        //        cout << channels[f][g].numBackups << " ";
-        //    }
-        //    cout << "\n";
-        //}
         increaseNetworkLoad(&cons[x],channels);
-        //cout << "AFTER INC_NET_LD:\n";
-        //for(int f = 0; f < (2*N_EDGES); ++f){
-        //    for(int g = 0; g < MAX_CHANNELS; ++g) {
-        //        cout << channels[f][g].numBackups << " ";
-        //    }
-        //    cout << "\n";
-        //}
     }
-    /*
-    cons[0] = allPrimaryBackupCombos(vertexList,edgeList,0,4,cons[0]);
-    cout << "SELECTED\n";
-    printPath(cons[0].primaryPath);
-    printPath(cons[0].backupPath);
-    increaseNetworkLoad(&cons[0]);
-
-
-    cons[1] = allPrimaryBackupCombos(vertexList,edgeList,0,7,cons[0]);
-    cout << "SELECTED\n";
-    printPath(cons[1].primaryPath);
-    printPath(cons[1].backupPath);
-    increaseNetworkLoad(&cons[1]);*/
 
     for(int m = 0; m < 2*N_EDGES; ++m) {
         cout << "LOAD: " << edgeList[m].v1 << " -> " << edgeList[m].v2 << ": " << edgeList[m].load << " | ";
@@ -190,15 +155,6 @@ int main(int argc, char** argv) {
 
     }
 
-    /*
-    //init random number generator
-    srand(time(NULL));
-    for(int i = 0; i < SAMPLES; ++i) {
-        readGraphReorderEdgeList(vertexList,edgeList,reorderedEdgeList);
-        randomConnections(vertexList,reorderedEdgeList,i);
-        //randomConnections(vertexList,edgeList,i);
-    }*/
-
     return 0;
 }
 
@@ -206,12 +162,7 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
     //Increment the network load; put the backup on the channels
     for(int i = 0; i <= (*(*connection).primaryPath).index; ++i) {
         //Every edge in the primary path gets its load increased
-        //(*(*(*connection).primaryPath).edges[i]).channels[(*(*(*connection).primaryPath).edges[i]).load].numBackups = 0;
-
-
-
-        //(*(*(*connection).primaryPath).edges[i]).load += 1;
-
+        (*(*(*connection).primaryPath).edges[i]).load += 1;
     }
 
     for(int i = 0; i <= (*(*connection).backupPath).index; ++i) {
