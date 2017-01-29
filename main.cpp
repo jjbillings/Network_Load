@@ -470,9 +470,10 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                     }
                 }
 
-                //If there are no paths (primary or backup) allocated on this channel, we know immediately that it's free.
+                //If there are no paths (primary or backup) allocated on this channel, then it costs 1, since now
+                //a primary cannot use this one.
                 if(channels[edgeListIndex[currentNode]][ch].numBackups == 0) {
-                    channelProb = false;
+                    channelProb = true;
                     cNum = ch;
                     goto CHANNEL_END;
                 }
