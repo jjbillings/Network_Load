@@ -18,7 +18,7 @@
 using namespace std;
 
 #define NUM_CONNECTIONS 1000
-#define MAX_CHANNELS 3
+#define MAX_CHANNELS 30
 #define SAMPLES 1
 
 struct Path;
@@ -123,11 +123,11 @@ int main(int argc, char** argv) {
     srand(time(NULL));
 
     //TODO: Currently, some backups seem to be "creating" new channels. Restrict max channels
-    for(int x = 0; x < 30; ++x) {
-        //int s = rand() % N_NODES;
-        //int d = rand() % N_NODES;
-        int s = 0;
-        int d = 9;
+    for(int x = 0; x < 20; ++x) {
+        int s = rand() % N_NODES;
+        int d = rand() % N_NODES;
+        //int s = 0;
+        //int d = 9;
         while(s == d) {
             s = rand() % N_NODES;
             d = rand() % N_NODES;
@@ -270,7 +270,7 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         int minCost = 100000;
         Path *cheapest;
         for(int backup = 0; backup < bp; ++backup) {
-            if((*(*bps[backup]).backupPath).cost < minCost) {
+            if((*(*bps[backup]).backupPath).index > 0 && (*(*bps[backup]).backupPath).cost < minCost) {
                 cheapest = (*bps[backup]).backupPath;
                 minCost = (*cheapest).cost;
             }
@@ -285,16 +285,22 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
     //Select the cheapest primary/backup combo.
     int minCost = 100000;
     Connection2 cheapestCon;
+    int ind = -1;
     cout << "PREPARING TO FIND THE CHEAPEST\n";
     for(int c = 0; c < k; ++c) {
         if((*conns[c]).combinedCost < minCost) {
             minCost = (*conns[c]).combinedCost;
             cheapestCon = *conns[c];
+            ind = c;
         }
     }
+
     Connection2 ret = cheapestCon;
     for(int i = 0; i < k; ++i) {
-        delete paths[i];
+        if(i != ind) {
+            delete conns[i];
+            delete paths[i];
+        }
     }
     return ret;
 }
