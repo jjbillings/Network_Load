@@ -86,7 +86,7 @@ bool single_connection_N_hops(int vertexList[], Edge edgeList[2*N_EDGES],int hop
 bool computeBackupPath(int vertexList[], Edge edgeList[2*N_EDGES], Connection conns[NUM_CONNECTIONS], int connectionNum, int hops);
 bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p);
 
-int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]);
+int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     srand(time(NULL));
 
     //TODO: Currently, some backups seem to be "creating" new channels. Restrict max channels
-    for(int x = 0; x < 20; ++x) {
+    for(int x = 0; x < 50; ++x) {
         int s = rand() % N_NODES;
         int d = rand() % N_NODES;
         //int s = 0;
@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
             printPath(cons[x].backupPath);
             increaseNetworkLoad(&cons[x],channels);
         }
-
+        cout <<"";
     }
 
 
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
 
 void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]) {
 
-    if((*(*connection).primaryPath).index <= 0) {
+    if((*(*connection).primaryPath).index < 0) {
         cout << "Primary Path DNE?\n";
         return;
     }
@@ -174,10 +174,17 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
     //Here we are incrementing the network load for the PRIMARY PATH
     for(int i = 0; i <= (*(*connection).primaryPath).index; ++i) {
         //Every edge in the primary path gets its load increased
-        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].primary = true;
-        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].backupsOnChannel[0] = connection;
-        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].numBackups += 1;
+        //channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].primary = true;
+        //channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].backupsOnChannel[0] = connection;
+        //channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].numBackups += 1;
+        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].primary = true;
+        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].backupsOnChannel[0] = connection;
+        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups += 1;
         (*(*(*connection).primaryPath).edges[i]).load += 1;
+        if(channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups == 0) {
+            cout << "RED ALERT\n";
+        }
+
     }
 
     //Here we are increasing the network load for the BACKUP PATH
@@ -186,8 +193,10 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
         Edge *e = (*(*connection).backupPath).edges[i];
         int cNum = (*(*connection).backupPath).channelNum[i];
 
+
         //first path to use this channel, or this is not a free edge for the backup path.
-        if(channels[(*e).edgeNum][cNum].numBackups == 0 || (*(*connection).backupPath).freeEdges[i] == false) {
+        //if(channels[(*e).edgeNum][cNum].numBackups == 0 || (*(*connection).backupPath).freeEdges[i] == false) {
+        if((*(*connection).backupPath).freeEdges[i] == false) {
             (*e).load += 1;
         }
 
@@ -197,6 +206,10 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
         channels[en][cNum].primary = false;
         channels[en][cNum].backupsOnChannel[numbs] = connection;
         channels[en][cNum].numBackups += 1;
+
+        if(channels[en][cNum].numBackups == 0) {
+            cout << "RED ALERT\n";
+        }
     }
 
 }
@@ -214,9 +227,9 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
     }
 
     //TODO: have computeAllPrimaryPaths store paths directly in cons[] array, eliminating the need for the paths[] array.
-    int k = computeAllPrimaryPaths(vertexList,edgeList,sourceNode,destNode,N_NODES,paths);
+    int k = computeAllPrimaryPaths(vertexList,edgeList,sourceNode,destNode,N_NODES,paths,channels);
     if(k == 0) {
-        //cout << "NO PRIMARY PATHS POSSIBLE";
+        cout << "NO PRIMARY PATHS POSSIBLE";
         return *(new Connection2());
     }
 
@@ -253,6 +266,8 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         }
 
         int bp = computeAllBackupPaths(vertexList, edgeList, paths[j], N_NODES, bps,channels);
+
+        //TODO: HANDLE IF WE ARE UNABLE TO COMPUTE A BACKUP PATH.
         //cout << "NUM_BACKUP_PATHS: " << bp <<"\n";
 
         //Compute the cost of each backup path.
@@ -307,7 +322,7 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
 
 
 
-int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS]) {
+int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]) {
     //cout << "Preparing to compute all primary paths\n";
     //initialize arrays
     int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
@@ -358,6 +373,20 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
 
                 for(int i = 0; i <= (*p[currentPath]).index; ++i) {
                     (*p[currentPath]).cost += 1;
+
+                    //(*p[currentPath]).channelNum[i] = (*(*p[currentPath]).edges[i]).load;
+                    int en = (*(*p[currentPath]).edges[i]).edgeNum;
+                    int ind = 0;
+                    (*p[currentPath]).channelNum[i] = -1;
+                    for(int f = 0; f < MAX_CHANNELS; ++f) {
+                        if(channels[en][f].numBackups == 0) {
+                            (*p[currentPath]).channelNum[i] = f;
+                            goto GOOD; // TODO: TEST and put method header up top.
+                        }
+                    }
+                    cout <<"MAJOR ERRORRRRRRRRR\n";
+                    GOOD:
+                    cout <<"";
                 }
 
                 (*p[currentPath]).primary = true;
@@ -472,6 +501,8 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                     if(ch < edgeList[edgeListIndex[currentNode]].load) {
                         goto CHANNEL_START;
                     }else {
+                        channelProb = true;
+                        cNum = ch;
                         goto CHANNEL_END;
                     }
                 }
@@ -496,8 +527,9 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                                 //cout << "NON-DISJOINT PRIMARY PATHS\n";
                                 channelProb = true;
                                 //If we run into a problem, go to the next channel.
-                                ch+=1;
+
                                 if(ch < edgeList[edgeListIndex[currentNode]].load) {
+                                    ch+=1;
                                     goto CHANNEL_START;
                                 }else {
                                     cNum = ch;
