@@ -38,6 +38,7 @@ struct Edge {
     int v1;
     int v2;
     int load; //load <= MAX_CHANNELS. Also, load is the sum of the primary AND backups paths using it.
+    int totalProtected;
 };
 
 struct Path {
@@ -147,12 +148,12 @@ int main(int argc, char** argv) {
 
     //print out each edge, with its load and the number of backups protected on each channel.
     for(int m = 0; m < 2*N_EDGES; ++m) {
-        cout << "LOAD: " << edgeList[m].v1 << " -> " << edgeList[m].v2 << ": " << edgeList[m].load << " | ";
+        cout << "LOAD: " << edgeList[m].v1 << " -> " << edgeList[m].v2 << ": " << edgeList[m].load << " | TP: " << edgeList[m].totalProtected << " | ";
         if(edgeList[m].load > 0) {
             for(int c = 0; c < edgeList[m].load; ++c) {
                 cout << "C" << c << ": " << channels[m][c].numBackups << " ";
                 if(channels[m][c].primary == true) {
-                    cout << "PRIMARY | ";
+                    cout << "P ";
                 }
             }
         }
@@ -174,13 +175,11 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
     //Here we are incrementing the network load for the PRIMARY PATH
     for(int i = 0; i <= (*(*connection).primaryPath).index; ++i) {
         //Every edge in the primary path gets its load increased
-        //channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].primary = true;
-        //channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].backupsOnChannel[0] = connection;
-        //channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*(*connection).primaryPath).edges[i]).load].numBackups += 1;
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].primary = true;
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].backupsOnChannel[0] = connection;
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups += 1;
         (*(*(*connection).primaryPath).edges[i]).load += 1;
+        (*(*(*connection).primaryPath).edges[i]).totalProtected += 1;
         if(channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups == 0) {
             cout << "RED ALERT\n";
         }
@@ -206,6 +205,7 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
         channels[en][cNum].primary = false;
         channels[en][cNum].backupsOnChannel[numbs] = connection;
         channels[en][cNum].numBackups += 1;
+        (*e).totalProtected +=1;
 
         if(channels[en][cNum].numBackups == 0) {
             cout << "RED ALERT\n";
@@ -283,11 +283,13 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
 
         //Find the "Cheapest" backup path for THIS primary path
         int minCost = 100000;
+        int minInd = -1;
         Path *cheapest;
         for(int backup = 0; backup < bp; ++backup) {
             if((*(*bps[backup]).backupPath).index > 0 && (*(*bps[backup]).backupPath).cost < minCost) {
                 cheapest = (*bps[backup]).backupPath;
                 minCost = (*cheapest).cost;
+                minInd = backup;
             }
         }
 
@@ -295,6 +297,12 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
         (*conns[j]).validBackup = true;
 
         (*conns[j]).combinedCost = (*(*conns[j]).backupPath).cost + (*(*conns[j]).primaryPath).cost;
+
+        for(int back = 0; back < MAX_PATHS; ++back) {
+            if(back != minInd) {
+                delete bps[back];
+            }
+        }
     }
 
     //Select the cheapest primary/backup combo.
@@ -309,6 +317,12 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
             ind = c;
         }
     }
+
+    //TODO:THIS IS TESTING
+    int randomInt = rand() % k;
+    cheapestCon = *conns[randomInt];
+    ind = randomInt;
+    //TODO:END TEST
 
     Connection2 ret = cheapestCon;
     for(int i = 0; i < k; ++i) {
@@ -591,6 +605,14 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
                     (*(*p[currentPath+1]).backupPath).freeEdges[i] = (*(*p[currentPath]).backupPath).freeEdges[i];
                 }
 
+                //TODO:TESTING to see if backup path's freeEdges/channelnums arrays are responsible for load being incremented
+                //It does not appear to be the case
+                for(int i = (*(*p[currentPath]).backupPath).index; i < N_NODES; ++i) {
+                    (*(*p[currentPath]).backupPath).freeEdges[i] = true;
+                    (*(*p[currentPath]).backupPath).channelNum[i] = -1;
+                }
+
+
                 currentPath += 1;
 
                 (*(*p[currentPath]).backupPath).index += 1;
@@ -827,6 +849,7 @@ void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],E
                 compactEdgeList[counter].v1 = i;
                 compactEdgeList[counter].v2 = j;
                 compactEdgeList[counter].load = 0;
+                compactEdgeList[counter].totalProtected = 0;
                 compactEdgeList[counter].edgeNum = counter;
 
                 //for(int x = 0; x < MAX_CHANNELS; ++x) {
@@ -1032,7 +1055,7 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
                 //Now that we have the path set, increase the load on each edge.
                 for(int i = 0; i <= (*p).index; ++i) {
-                    (*(*p).edges[i]).load++;
+                    //(*(*p).edges[i]).load++;
                 }
 
                 (*p).sourceNode = sourceNode;
