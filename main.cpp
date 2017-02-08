@@ -89,7 +89,6 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 
 int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
-int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -182,9 +181,6 @@ void increaseNetworkLoad(Connection2 *connection, Channel channels[2*N_EDGES][MA
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups += 1;
         (*(*(*connection).primaryPath).edges[i]).load += 1;
         (*(*(*connection).primaryPath).edges[i]).totalProtected += 1;
-        if(channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups == 0) {
-            cout << "RED ALERT\n";
-        }
     }
 
     //Here we are increasing the network load for the BACKUP PATH
@@ -261,9 +257,7 @@ Connection2 allPrimaryBackupCombos(int vertexList[], Edge edgeList[2*N_EDGES],in
             (*(*bps[i]).backupPath).index = 0;
         }
 
-        int bp = computeAllBackupPaths2(vertexList, edgeList, paths[j], N_NODES, bps,channels);
-
-        //TODO: HANDLE IF WE ARE UNABLE TO COMPUTE A BACKUP PATH.
+        int bp = computeAllBackupPaths(vertexList, edgeList, paths[j], N_NODES, bps,channels);
         //cout << "NUM_BACKUP_PATHS: " << bp <<"\n";
 
         //Compute the cost of each backup path.
@@ -452,7 +446,7 @@ int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int source
 }
 
 
-int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]) {
+int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]) {
     //cout << "Preparing to compute all backup paths\n";
     //cout << "PP: S: " << (*primaryPath).sourceNode << " D: " << (*primaryPath).destNode << "\n";
 
@@ -476,8 +470,6 @@ int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *pri
     int neighbor;
     int currentHop = 0;
 
-
-
     st.push((*primaryPath).sourceNode);
     visited[(*primaryPath).sourceNode] = 1;
 
@@ -487,8 +479,6 @@ int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *pri
         //for each neighbor of currentNode
         for(; edgeListIndex[currentNode] < vertexList[currentNode+1]; ++edgeListIndex[currentNode]) {
             neighbor = edgeList[edgeListIndex[currentNode]].v2;
-            bool channelProb = false;
-            int cNum = 0;
             int firstOpenChannel = MAX_CHANNELS+1;
 
 
@@ -514,7 +504,6 @@ int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *pri
 
                 CHANNEL_START:
                 if(channels[edgeListIndex[currentNode]][ch].primary == true) {
-                    //goto CHANNEL_LOOP_END;
                     continue;
                 }
 
@@ -543,14 +532,13 @@ int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *pri
                         for(int te = 0; te <=(*(*p[currentPath]).primaryPath).index; ++te ) {
 
                             if((*(*channels[edgeListIndex[currentNode]][ch].backupsOnChannel[bup]).primaryPath).edges[e] == (*(*p[currentPath]).primaryPath).edges[te]) {
-
-                                //There is a problem and we cannot use this channel
+                                //There is a non-disjoint primary path on this channel, so it is unusable.
                                 goto CHANNEL_LOOP_END;
                             }
                         }
                     }
-
                 }
+
                 //If every protected connection is primary disjoint
                 //Then this channel is free af.
                 (*(*p[currentPath]).backupPath).freeEdges[(*(*p[currentPath]).backupPath).index] = true;
@@ -562,6 +550,7 @@ int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *pri
             }
 
             CHANNEL_END:
+            //Here we check to see if we were unable to find a "free" path
             if((*(*p[currentPath]).backupPath).freeEdges[(*(*p[currentPath]).backupPath).index] == false) {
                 if(firstOpenChannel < MAX_CHANNELS) {
                     (*(*p[currentPath]).backupPath).channelNum[(*(*p[currentPath]).backupPath).index] = firstOpenChannel;
@@ -598,206 +587,6 @@ int computeAllBackupPaths2(int vertexList[], Edge edgeList[2*N_EDGES], Path *pri
                     (*(*p[currentPath+1]).backupPath).freeEdges[i] = (*(*p[currentPath]).backupPath).freeEdges[i];
                     (*(*p[currentPath+1]).backupPath).channelNum[i] = (*(*p[currentPath]).backupPath).channelNum[i];
                 }
-
-                currentPath += 1;
-
-                (*(*p[currentPath]).backupPath).index += 1;
-                ++edgeListIndex[currentNode];
-                goto LOOP;
-            }
-
-            if(!visited[neighbor]) {
-
-                (*(*p[currentPath]).backupPath).edges[(*(*p[currentPath]).backupPath).index] = &edgeList[edgeListIndex[currentNode]];
-                (*(*p[currentPath]).backupPath).index += 1;
-
-                st.push(neighbor);
-                visited[neighbor] = 1;
-                currentHop++;
-
-                //continue the while loop, but increment the ELI first.
-                ++edgeListIndex[currentNode];
-                goto LOOP;
-            }
-            END_OF_LOOP:
-            cout <<"";
-        }
-
-        NEXT_NODE:
-        currentHop--;
-
-        //Once we've visited all of this node's neighbors, we reset it so that a
-        //different path involving this node can be explored.
-        visited[currentNode] = 0;
-        (*(*p[currentPath]).backupPath).index -= 1;
-
-        edgeListIndex[currentNode] = vertexList[currentNode];
-        st.pop();
-    }
-    return currentPath;
-}
-
-
-
-
-
-int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]) {
-    //cout << "Preparing to compute all backup paths\n";
-    //cout << "PP: S: " << (*primaryPath).sourceNode << " D: " << (*primaryPath).destNode << "\n";
-
-    //initialize arrays
-    int visited[N_NODES]; //visited[i] is 1 if node i has been visited on this path, 0 otherwise.
-    int currentPath = 0;
-
-    //edgeListIndex[i] contains the index into edgeList[] (aka the compact adj list) for node i.
-    int edgeListIndex[N_NODES];
-
-    (*(*p[currentPath]).backupPath).index = 0;
-
-    //Initialize our search components
-    for(int i = 0; i < N_NODES; ++i) {
-        visited[i] = 0;
-        edgeListIndex[i] = vertexList[i];
-    }
-
-    stack <int> st;
-    int currentNode;
-    int neighbor;
-    int currentHop = 0;
-
-    st.push((*primaryPath).sourceNode);
-    visited[(*primaryPath).sourceNode] = 1;
-
-    LOOP:
-    while(st.size() > 0) {
-        currentNode = st.top();
-        //for each neighbor of currentNode
-        for(; edgeListIndex[currentNode] < vertexList[currentNode+1]; ++edgeListIndex[currentNode]) {
-            neighbor = edgeList[edgeListIndex[currentNode]].v2;
-            bool channelProb = false;
-            int cNum = 0;
-
-
-            //If we're too far away from our source node, backtrack.
-            if(currentHop >= hops) {
-                goto NEXT_NODE;
-            }
-
-            //Ensure that that we do not use ANY edges that the primary path uses.
-            for(int k = 0; k <= (*primaryPath).index; ++k) {
-                if(&edgeList[edgeListIndex[currentNode]] == (*primaryPath).edges[k]) {
-                    goto END_OF_LOOP;
-                }
-            }
-
-            //For every channel on this edge, if every backup path allocated for this channel
-            //is disjoint from current backup path candidate, then this edge is free!
-            //for each channel on this edge
-            for(int ch = 0; ch < edgeList[edgeListIndex[currentNode]].load; ++ch) {
-
-                CHANNEL_START:
-                if(channels[edgeListIndex[currentNode]][ch].primary == true) {
-                    ch+=1;
-                    if(ch < edgeList[edgeListIndex[currentNode]].load) {
-                        goto CHANNEL_START;
-                    }else {//implies that ch == edge.load
-                        channelProb = true;
-                        cNum = ch;
-                        goto CHANNEL_END;
-                    }
-                }
-
-                //If there are no paths (primary or backup) allocated on this channel, then it costs 1, since now
-                //a primary cannot use this one.
-                if(channels[edgeListIndex[currentNode]][ch].numBackups == 0) {
-                    channelProb = true;
-                    cNum = ch;
-                    goto CHANNEL_END;
-                }
-
-                //Check every connection currently on protected on the channel
-                for(int bup = 0; bup < channels[edgeListIndex[currentNode]][ch].numBackups; ++bup) {
-
-                    //for each edge of the protected connection's primary path
-                    for(int e = 0; e <= (*(*channels[edgeListIndex[currentNode]][ch].backupsOnChannel[bup]).primaryPath).index; ++e) {
-                        //see if its the same edge as used by our primary path.
-                        for(int te = 0; te <=(*(*p[currentPath]).primaryPath).index; ++te ) {
-
-                            if((*(*channels[edgeListIndex[currentNode]][ch].backupsOnChannel[bup]).primaryPath).edges[e] == (*(*p[currentPath]).primaryPath).edges[te]) {
-                                //cout << "NON-DISJOINT PRIMARY PATHS\n";
-                                channelProb = true;
-                                //If we run into a problem, go to the next channel.
-
-                                if(ch < edgeList[edgeListIndex[currentNode]].load) {
-                                    ch+=1;
-                                    goto CHANNEL_START;
-                                }else {
-                                    cNum = ch;
-                                    goto CHANNEL_END;
-                                }
-
-                            }
-                        }
-                    }
-
-                }
-                //If every protected connection is primary disjoint
-                //Then this channel is free af.
-                cNum = ch;
-                goto CHANNEL_END;
-            }
-
-            CHANNEL_END:
-            if(channelProb == false) {
-                (*(*p[currentPath]).backupPath).freeEdges[(*(*p[currentPath]).backupPath).index] = true;
-                (*(*p[currentPath]).backupPath).channelNum[(*(*p[currentPath]).backupPath).index] = cNum; // save which channel we are using for this link
-            }else {
-                (*(*p[currentPath]).backupPath).freeEdges[(*(*p[currentPath]).backupPath).index] = false;
-                (*(*p[currentPath]).backupPath).channelNum[(*(*p[currentPath]).backupPath).index] = cNum;
-            }
-
-            //if this edge is at max capacity (i.e. has no free channels),
-            // we would want to check and see if we can share a channel with one of the paths.
-            if(edgeList[edgeListIndex[currentNode]].load == MAX_CHANNELS) {
-                //cout << "CHANNELS ARE MAXED OUT, CAN WE SHARE?\n";
-                if(channelProb == true) {
-                    continue;
-                }
-            }
-
-            //If our neighbor is the desired node, AND we're at the correct path length, save this path!
-            if(neighbor == (*primaryPath).destNode && currentHop < hops) {
-
-                (*(*p[currentPath]).backupPath).edges[(*(*p[currentPath]).backupPath).index] = &edgeList[edgeListIndex[currentNode]];
-
-
-                (*(*p[currentPath]).backupPath).sourceNode = (*primaryPath).sourceNode;
-                (*(*p[currentPath]).backupPath).destNode = (*primaryPath).destNode;
-                (*(*p[currentPath]).backupPath).hops = hops;
-                (*(*p[currentPath]).backupPath).primary = false;
-
-                //Make sure we don't use the same path for the primary and backup paths.
-                if(comparePath((*(*p[currentPath]).backupPath),*primaryPath)) {
-                    goto NEXT_NODE;
-                }
-
-                //Copy the whole path up until the dest node to the next path in the array.
-                (*(*p[currentPath+1]).backupPath).sourceNode = (*primaryPath).sourceNode;
-                (*(*p[currentPath+1]).backupPath).destNode = (*primaryPath).destNode;
-                (*(*p[currentPath+1]).backupPath).hops = hops;
-                (*(*p[currentPath+1]).backupPath).index = (*(*p[currentPath]).backupPath).index-1;
-                for(int i = 0; i < (*(*p[currentPath]).backupPath).index; ++i) {
-                    (*(*p[currentPath+1]).backupPath).edges[i] = (*(*p[currentPath]).backupPath).edges[i];
-                    (*(*p[currentPath+1]).backupPath).freeEdges[i] = (*(*p[currentPath]).backupPath).freeEdges[i];
-                }
-
-                //TODO:TESTING to see if backup path's freeEdges/channelnums arrays are responsible for load being incremented
-                //It does not appear to be the case
-                for(int i = (*(*p[currentPath]).backupPath).index; i < N_NODES; ++i) {
-                    (*(*p[currentPath]).backupPath).freeEdges[i] = true;
-                    (*(*p[currentPath]).backupPath).channelNum[i] = -1;
-                }
-
 
                 currentPath += 1;
 
