@@ -101,7 +101,8 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 
-int computeAllSimplePathsN(SimplePath **ps, int vertexList[], Edge edgeList[2*N_EDGES], int sourceNode, int destNode, int hops);
+int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int sourceNode, int destNode, int hops);
+void simulate(int *vertexList, Edge *edgeList);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -136,35 +137,7 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    //We want to compute and store all possible paths between our source and desitination.
-    SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
-    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
-        ps[i] = new SimplePath[NUM_CONNECTIONS];
-    }
-
-    cout <<"ps created\n";
-
-    //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
-    for(int src = 0; src < N_NODES; ++src) {
-        for(int dest = 0; dest < N_NODES; ++dest) {
-            if(src != dest) {
-                int numPaths = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
-                cout <<"All simple paths computed and stored! " << numPaths << " paths between " << src << " and " << dest << "\n";
-            }
-        }
-    }
-    //At this point, we COULD delete[] any paths in the array that we didn't use.
-
-
-    cout << "all simple paths computed!\n";
-
-    //Clean up our memory
-    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
-        delete[] ps[i];
-    }
-    delete[] ps;
-    cout << "ps deleted";
-
+    simulate(vertexList,edgeList);
 
     /*Use this for computing all primary/backup combos
     for(int x = 0; x < 100; ++x) {
@@ -207,7 +180,65 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-int computeAllSimplePathsN(SimplePath **ps, int vertexList[], Edge edgeList[2*N_EDGES], int sourceNode, int destNode, int hops) {
+void simulate(int *vertexList, Edge *edgeList){
+    //We want to compute and store all possible paths between our source and desitination.
+    SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
+    int *npaths = new int[N_NODES*N_NODES];
+
+    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
+        ps[i] = new SimplePath[NUM_CONNECTIONS];
+    }
+
+    cout <<"ps created\n";
+
+    //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
+    for(int src = 0; src < N_NODES; ++src) {
+        for(int dest = 0; dest < N_NODES; ++dest) {
+            if(src != dest) {
+                int index = (src*N_NODES)+dest;
+                npaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
+                cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
+            }
+        }
+    }
+    //At this point, we COULD delete[] any paths in the array that we didn't use.
+    cout << "all simple paths computed!\n";
+
+
+    //Attempt to allocate some connection onto the network
+    int s = 0;
+    int d = 9;
+
+    //Allocate storage for the potential primary/backup path combos
+    int index = (s*N_NODES) + d;
+    int numPossiblePaths = npaths[index];
+    Connection2 ** potentialConns = new Connection2*[numPossiblePaths];
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        potentialConns[i] = new Connection2[numPossiblePaths];
+    }
+
+    cout << "Memory for potential connections allocated\n";
+
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        delete[] potentialConns[i];
+    }
+    delete[] potentialConns;
+
+    cout << "Memory for potential connections freed\n";
+
+
+
+    //Clean up our memory
+    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
+        delete[] ps[i];
+    }
+    delete[] ps;
+    delete[] npaths;
+    cout << "ps and npaths deleted\n";
+}
+
+
+int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int sourceNode, int destNode, int hops) {
     int index = (sourceNode * N_NODES) + destNode;
 
     //initialize arrays
