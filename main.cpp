@@ -257,9 +257,11 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "ps and npaths deleted\n";
 }
 
+//TODO: Give each thread an index into the array of simple paths, and have them check to see if "their" path is compatible.
+//TODO: Will we get bottlenecked super hard writing into the potPath[] array?
 int determineCompatibleBackups(SimplePath *p, Path *potPath, int numPossiblePaths) {
     int numDisjoint = 0;
-
+    int disjointPathIndices[numPossiblePaths];
     //First pass checks to see which simple paths are disjoint from the primary path.
     for(int i = 0; i < numPossiblePaths; ++i) {
         bool disjoint = true;
@@ -271,6 +273,7 @@ int determineCompatibleBackups(SimplePath *p, Path *potPath, int numPossiblePath
 
         }
         if(disjoint) {
+            disjointPathIndices[numDisjoint] = i;
             numDisjoint++;
             potPath[numDisjoint].sourceNode = p[i].sourceNode;
             potPath[numDisjoint].destNode = p[i].destNode;
