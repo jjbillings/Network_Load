@@ -105,6 +105,7 @@ int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int
 void simulate(int *vertexList, Edge *edgeList);
 int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd);
 void computeCostForBackups(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts,Channel cs[2*N_EDGES][MAX_CHANNELS]);
+void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -183,6 +184,7 @@ int main(int argc, char** argv) {
 }
 
 void simulate(int *vertexList, Edge *edgeList){
+    int connectionNum = 0;
     //We want to compute and store all possible paths between our source and desitination.
     SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
     int *npaths = new int[N_NODES*N_NODES];
@@ -267,8 +269,30 @@ void simulate(int *vertexList, Edge *edgeList){
 
     cout << "Min cost is: " << minCost << "\n";
 
+    //Store the connection
+    cons[connectionNum].sourceNode = s;
+    cons[connectionNum].destNode = d;
+    cons[connectionNum].combinedCost = minCost;
+    cons[connectionNum].validBackup = true;
+    cons[connectionNum].validPrimary = true;
+    cons[connectionNum].backupPath = new Path();
+    cons[connectionNum].primaryPath = new Path();
+    (*cons[connectionNum].primaryPath).hops = ps[index][minPrimInd].hops;
+    (*cons[connectionNum].primaryPath).index = ps[index][minPrimInd].index;
+    (*cons[connectionNum].backupPath).hops = ps[index][minBackInd].hops;
+    (*cons[connectionNum].backupPath).index = ps[index][minBackInd].index;
+
+    for(int p = 0; p <= ps[index][minPrimInd].index; ++p) {
+        (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimInd].edges[p];
+        (*cons[connectionNum].primaryPath).freeEdges[p] = false;
+    }
+    for(int p = 0; p <= ps[index][minBackInd].index; ++p) {
+        (*cons[connectionNum].backupPath).edges[p] = ps[index][minBackInd].edges[p];
+    }
 
 
+    //Select Channels
+    selectChannels(&cons[connectionNum],channels);
 
     //Clean up our memory
     for(int i = 0; i < numPossiblePaths; ++i) {
@@ -287,6 +311,77 @@ void simulate(int *vertexList, Edge *edgeList){
     delete[] ps;
     delete[] npaths;
     cout << "ps and npaths deleted\n";
+}
+
+void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
+
+    //Select Primary path channels;
+    for(int p = 0; p <= (*(*c).primaryPath).index; ++p){
+        int edgeNum = (*(*(*c).primaryPath).edges[p]).edgeNum;
+        bool allSet = false;
+        for(int ch = 0; !allSet && ch < MAX_CHANNELS; ++ch) {
+            if(chan[edgeNum][ch].numBackups == 0) {
+                allSet = true;
+                (*(*c).primaryPath).channelNum[p] = ch;
+            }
+        }
+    }
+
+    for(int e = 0; e <= (*(*c).backupPath).index; ++e) {
+        bool free = false;
+        int edgeNum = (*(*(*c).backupPath).edges[e]).edgeNum;
+        int firstOpenChannel = MAX_CHANNELS+1;
+
+        for(int ch = 0; !free && ch < MAX_CHANNELS; ++ch) {
+
+            if(chan[edgeNum][ch].primary == true) {
+                continue;
+            }
+
+            //At this point, we know that there are no primary paths on this channel
+            //Thus we must check and see if it is "free".
+
+            //we COULD use this channel, but there may be a "free" one further down.
+            if(chan[edgeNum][ch].numBackups == 0) {
+                if(ch < firstOpenChannel) {
+                    firstOpenChannel = ch;
+                }
+                continue;
+            }
+
+            bool disjoint = true;
+
+            //Check every connection currently on protected on the channel
+            for(int bup = 0; disjoint && bup < chan[edgeNum][ch].numBackups; ++bup) {
+
+                //At this point, we know that there is at least one path protected on this channel.
+                //Technically, we should also know that it's not a primary path.
+
+                //for each edge of the protected connection's primary path
+                for(int e2 = 0; disjoint && e2 <= (*(*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+
+                    //see if its the same edge as used by our primary path.
+                    for(int e3 = 0; disjoint && e3 <= (*(*c).primaryPath).index; ++e3 ) {
+
+                        if((*(*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath).edges[e2] == (*(*c).primaryPath).edges[e3]) {
+                            //There is a non-disjoint primary path on this channel, so it is unusable.
+                            //goto CHANNEL_LOOP_END;
+                            disjoint = false;
+                        }
+                    }
+                }
+            }
+
+            if(disjoint) {
+                //This channel is free
+                free = true;
+                (*(*c).backupPath).channelNum[e] = ch;
+                (*(*c).backupPath).freeEdges[e] = true;
+            }
+        }
+
+    }
+    cout << "all set?\n";
 }
 
 //TODO: Need to test once we actually start loading the network.
@@ -338,7 +433,7 @@ void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths,
 
                             if((*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).edges[e2] == p[primaryInd].edges[e3]) {
                                 //There is a non-disjoint primary path on this channel, so it is unusable.
-                                //goto CHANNEL_LOOP_END;
+                                
                                 disjoint = false;
                             }
                         }
