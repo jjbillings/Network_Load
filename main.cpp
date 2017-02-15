@@ -207,6 +207,7 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "all simple paths computed!\n";
 
 
+
     //Attempt to allocate SOME connection onto the network
     int s = 0;
     int d = 9;
@@ -231,16 +232,40 @@ void simulate(int *vertexList, Edge *edgeList){
         cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
     }
 
+
+
     //Compute the Cost for each backup path.
     int ** pathCosts = new int*[numPossiblePaths];
     for(int i = 0; i < numPossiblePaths; ++i) {
         pathCosts[i] = new int[numPossiblePaths];
     }
 
-
     for(int i = 0; i < numPossiblePaths; ++i) {
         computeCostForBackups(ps[index],potPathInd[i],numPossiblePaths,i,pathCosts[i],channels);
     }
+
+
+
+    //Select cheapest connection
+    int minCost = 100000000;
+    int minPrimInd = -1;
+    int minBackInd = -1;
+
+    for(int p = 0; p < numPossiblePaths; ++p) {
+        int backInd = 0;
+        int primaryCost = ps[index][p].hops;
+
+        while(pathCosts[p][backInd] != -1) {
+            if((pathCosts[p][backInd] + primaryCost) < minCost) {
+                minCost = (pathCosts[p][backInd] + primaryCost);
+                minPrimInd = p;
+                minBackInd = backInd;
+            }
+            backInd++;
+        }
+    }
+
+    cout << "Min cost is: " << minCost << "\n";
 
 
 
@@ -267,7 +292,11 @@ void simulate(int *vertexList, Edge *edgeList){
 //TODO: Need to test once we actually start loading the network.
 void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int primaryInd, int *pathCosts, Channel cs[2*N_EDGES][MAX_CHANNELS]) {
 
-    for(int i = 0; potPathInd[i] != -1 && i < numPossiblePaths; ++i) {
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        if(potPathInd[i] == -1) {
+            pathCosts[i] = -1;
+            break;
+        }
         int pid = potPathInd[i];
         int cost = 0;
 
