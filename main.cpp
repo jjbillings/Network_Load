@@ -103,7 +103,8 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
 
 int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int sourceNode, int destNode, int hops);
 void simulate(int *vertexList, Edge *edgeList);
-int determineCompatibleBackups(SimplePath *p, Path *potPath, int numPossiblePaths);
+int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd);
+void computeCostForBackup(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -206,49 +207,55 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "all simple paths computed!\n";
 
 
-    //Attempt to allocate some connection onto the network
+    //Attempt to allocate SOME connection onto the network
     int s = 0;
     int d = 9;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
     int numPossiblePaths = npaths[index];
-    Path ** potPaths = new Path*[numPossiblePaths];
-    for(int i = 0; i < numPossiblePaths+1; ++i) {
-        potPaths[i] = new Path[numPossiblePaths];
 
-        //Copy primary path data into the first entry
-        potPaths[i][0].sourceNode = ps[index][i].sourceNode;
-        potPaths[i][0].destNode = ps[index][i].destNode;
-        potPaths[i][0].hops = ps[index][i].hops;
-        potPaths[i][0].index = ps[index][i].index;
-        potPaths[i][0].primary = true;
-        for(int j = 0; j <= ps[index][i].index; ++j) {
-            potPaths[i][0].edges[j] = ps[index][i].edges[j];
-        }
+    //Stores indices into the ps[index][] array for each disjoint backup path.
+    //potPathInd[i][j] = k where ps[index][k] is a path that is edge-disjoint from ps[index][i].
+    int ** potPathInd = new int*[numPossiblePaths];
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        potPathInd[i] = new int[numPossiblePaths];
     }
 
-    cout << "Memory for potential connections allocated\n";
-    cout << "Primary Paths copied to potPaths[i][0]\n";
+
+    //Find all paths which are edge-disjoint from this primary.
+    int k = -1;
+    //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
+        cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
+    }
+
+    //Compute the Cost for each backup path.
+    int ** pathCosts = new int*[numPossiblePaths];
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        pathCosts[i] = new int[numPossiblePaths];
+    }
 
 
     for(int i = 0; i < numPossiblePaths; ++i) {
-        int k = determineCompatibleBackups(ps[index],potPaths[i],numPossiblePaths);
-        cout << "k: " << k << "\n";
+        computeCostForBackup(ps[index],potPathInd[i],numPossiblePaths,i,pathCosts[i]);
     }
 
-
-
-    for(int i = 0; i < numPossiblePaths; ++i) {
-        delete[] potPaths[i];
-    }
-    delete[] potPaths;
-
-    cout << "Memory for potential connections freed\n";
 
 
 
     //Clean up our memory
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        delete[] potPathInd[i];
+    }
+    delete[] potPathInd;
+
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        delete[] pathCosts[i];
+    }
+    delete[] pathCosts;
+
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         delete[] ps[i];
     }
@@ -257,35 +264,31 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "ps and npaths deleted\n";
 }
 
+void computeCostForBackup(SimplePath *p, int *potPathInd, int numPotPaths, int primaryInd, int *pathCosts) {
+
+}
+
 //TODO: Give each thread an index into the array of simple paths, and have them check to see if "their" path is compatible.
-//TODO: Will we get bottlenecked super hard writing into the potPath[] array?
-int determineCompatibleBackups(SimplePath *p, Path *potPath, int numPossiblePaths) {
+int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd) {
     int numDisjoint = 0;
-    int disjointPathIndices[numPossiblePaths];
     //First pass checks to see which simple paths are disjoint from the primary path.
     for(int i = 0; i < numPossiblePaths; ++i) {
+        if(i == pInd) {//TODO: Shouldn't even need this, they will clearly be edge-disjoint
+            continue;
+        }
         bool disjoint = true;
         //Check each edge to make sure they're disjoint
-        for(int e = 0; disjoint && e <= p[i].index; ++e) {
-            if(p[i].edges[e] == potPath[0].edges[e]) {
+        for(int e = 0; disjoint && e <= p[pInd].index; ++e) {
+            if(p[i].edges[e] == p[pInd].edges[e]) {
                 disjoint = false;
             }
 
         }
         if(disjoint) {
-            disjointPathIndices[numDisjoint] = i;
+            potPathInd[numDisjoint] = i;
             numDisjoint++;
-            potPath[numDisjoint].sourceNode = p[i].sourceNode;
-            potPath[numDisjoint].destNode = p[i].destNode;
-            potPath[numDisjoint].hops = p[i].hops;
-            potPath[numDisjoint].index = p[i].index;
-            potPath[numDisjoint].primary = false;
-            for(int j = 0; j <= p[i].index; ++j) {
-                potPath[numDisjoint].edges[j] = p[i].edges[j];
-            }
         }
 
-        //Now potentially check the Network availability (which channels are potentially free)
     }
     cout << "disjoint: " << numDisjoint << " out of " << numPossiblePaths <<"\n";
     return numDisjoint;
