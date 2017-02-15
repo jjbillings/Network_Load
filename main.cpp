@@ -104,7 +104,7 @@ int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *prim
 int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int sourceNode, int destNode, int hops);
 void simulate(int *vertexList, Edge *edgeList);
 int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd);
-void computeCostForBackup(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts);
+void computeCostForBackups(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts,Channel cs[2*N_EDGES][MAX_CHANNELS]);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -239,7 +239,7 @@ void simulate(int *vertexList, Edge *edgeList){
 
 
     for(int i = 0; i < numPossiblePaths; ++i) {
-        computeCostForBackup(ps[index],potPathInd[i],numPossiblePaths,i,pathCosts[i]);
+        computeCostForBackups(ps[index],potPathInd[i],numPossiblePaths,i,pathCosts[i],channels);
     }
 
 
@@ -264,7 +264,79 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "ps and npaths deleted\n";
 }
 
-void computeCostForBackup(SimplePath *p, int *potPathInd, int numPotPaths, int primaryInd, int *pathCosts) {
+//TODO: Need to test once we actually start loading the network.
+void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int primaryInd, int *pathCosts, Channel cs[2*N_EDGES][MAX_CHANNELS]) {
+
+    for(int i = 0; potPathInd[i] != -1 && i < numPossiblePaths; ++i) {
+        int pid = potPathInd[i];
+        int cost = 0;
+
+        for(int e = 0; e <= p[pid].index; ++e) {
+            bool free = false;
+            int edgeNum = (*p[pid].edges[e]).edgeNum;
+            int firstOpenChannel = MAX_CHANNELS+1;
+
+            for(int c = 0; !free && c < MAX_CHANNELS; ++c) {
+
+                if(cs[edgeNum][c].primary == true) {
+                    continue;
+                }
+
+                //At this point, we know that there are no primary paths on this channel
+                //Thus we must check and see if it is "free".
+
+                //we COULD use this channel, but there may be a "free" one further down.
+                if(cs[edgeNum][c].numBackups == 0) {
+                    if(c < firstOpenChannel) {
+                        firstOpenChannel = c;
+                    }
+                    continue;
+                }
+
+                bool disjoint = true;
+
+                //Check every connection currently on protected on the channel
+                for(int bup = 0; disjoint && bup < channels[edgeNum][c].numBackups; ++bup) {
+
+                    //At this point, we know that there is at least one path protected on this channel.
+                    //Technically, we should also know that it's not a primary path.
+
+                    //for each edge of the protected connection's primary path
+                    for(int e2 = 0; disjoint && e2 <= (*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+
+                        //see if its the same edge as used by our primary path.
+                        for(int e3 = 0; disjoint && e3 <= p[primaryInd].index; ++e3 ) {
+
+                            if((*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).edges[e2] == p[primaryInd].edges[e3]) {
+                                //There is a non-disjoint primary path on this channel, so it is unusable.
+                                //goto CHANNEL_LOOP_END;
+                                disjoint = false;
+                            }
+                        }
+                    }
+                }
+
+                if(disjoint) {
+                    //This channel is free
+                    free = true;
+                }
+            }
+
+            if(!free) {
+                if(firstOpenChannel < MAX_CHANNELS) {
+                    cost++;
+                }else {
+                    cost = 1000000;
+                    break;
+                }
+
+            }
+
+        }
+
+        pathCosts[i] = cost;
+    }
+    cout << "all done\n";
 
 }
 
@@ -290,6 +362,8 @@ int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePa
         }
 
     }
+    //Mark the end of the array
+    potPathInd[numDisjoint] = -1;
     cout << "disjoint: " << numDisjoint << " out of " << numPossiblePaths <<"\n";
     return numDisjoint;
 }
