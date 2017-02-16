@@ -210,10 +210,16 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "all simple paths computed!\n";
 
 
-
+    for(int num = 0; num < 45; ++num) {
     //Attempt to allocate SOME connection onto the network
-    int s = 0;
-    int d = 9;
+    //int s = 0;
+    //int d = 9;
+    int s = rand() % N_NODES;
+    int d = rand() % N_NODES;
+    while(s == d) {
+        s = rand()%N_NODES;
+        d = rand()%N_NODES;
+    }
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -297,7 +303,7 @@ void simulate(int *vertexList, Edge *edgeList){
     selectChannels(&cons[connectionNum],channels);
 
     //Increase the network load
-    increaseNetworkLoad(&cons[connectionNum],channels);
+    increaseLoad(&cons[connectionNum],channels);
 
 
     //--------------Print Network Load--------------//
@@ -326,6 +332,8 @@ void simulate(int *vertexList, Edge *edgeList){
         delete[] pathCosts[i];
     }
     delete[] pathCosts;
+    connectionNum++;
+}//end loop
 
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         delete[] ps[i];
@@ -380,9 +388,19 @@ void increaseLoad(Connection2 *connection, Channel channels[2*N_EDGES][MAX_CHANN
 //I wanted to modularize the code as much as possible this time around, which is why there's so much redundancy in this method.
 void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
 
+    cout << "prim\n";
+    for(int i = 0; i <= (*(*c).primaryPath).index; ++i) {
+        cout << (*(*(*c).primaryPath).edges[i]).v1 << " -> " << (*(*(*c).primaryPath).edges[i]).v2 << "\n";
+    }
+    cout << "back\n";
+    for(int i = 0; i <= (*(*c).backupPath).index; ++i) {
+        cout << (*(*(*c).backupPath).edges[i]).v1 << " -> " << (*(*(*c).backupPath).edges[i]).v2 << "\n";
+    }
+
+    int edgeNum = -1;
     //Select Primary path channels;
     for(int p = 0; p <= (*(*c).primaryPath).index; ++p){
-        int edgeNum = (*(*(*c).primaryPath).edges[p]).edgeNum;
+        edgeNum = (*(*(*c).primaryPath).edges[p]).edgeNum;
         bool allSet = false;
         for(int ch = 0; !allSet && ch < MAX_CHANNELS; ++ch) {
             if(chan[edgeNum][ch].numBackups == 0) {
@@ -394,7 +412,7 @@ void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
 
     for(int e = 0; e <= (*(*c).backupPath).index; ++e) {
         bool free = false;
-        int edgeNum = (*(*(*c).backupPath).edges[e]).edgeNum;
+        edgeNum = (*(*(*c).backupPath).edges[e]).edgeNum;
         int firstOpenChannel = MAX_CHANNELS+1;
 
         for(int ch = 0; !free && ch < MAX_CHANNELS; ++ch) {
@@ -445,6 +463,9 @@ void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
             }
         }
 
+        if((*(*c).backupPath).freeEdges[e] == false) {
+            (*(*c).backupPath).channelNum[e] = firstOpenChannel;
+        }
     }
     cout << "all set?\n";
 }
