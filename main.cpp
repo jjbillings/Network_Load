@@ -101,7 +101,12 @@ bool computePrimaryPath(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNod
 int computeAllPrimaryPaths(int vertexList[], Edge edgeList[2*N_EDGES],int sourceNode, int destNode,int hops, Path *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 int computeAllBackupPaths(int vertexList[], Edge edgeList[2*N_EDGES], Path *primaryPath, int hops, Connection2 *p[MAX_PATHS], Channel channels[2*N_EDGES][MAX_CHANNELS]);
 
-int computeAllSimplePathsN(SimplePath **ps, int vertexList[], Edge edgeList[2*N_EDGES], int sourceNode, int destNode, int hops);
+int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int sourceNode, int destNode, int hops);
+void simulate(int *vertexList, Edge *edgeList);
+int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd);
+void computeCostForBackups(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts,Channel cs[2*N_EDGES][MAX_CHANNELS]);
+void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]);
+void increaseLoad(Connection2 *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]);
 
 void readGraph(int vertexList[],Edge compactEdgeList[2*N_EDGES]);
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -136,35 +141,7 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    //We want to compute and store all possible paths between our source and desitination.
-    SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
-    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
-        ps[i] = new SimplePath[NUM_CONNECTIONS];
-    }
-
-    cout <<"ps created\n";
-
-    //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
-    for(int src = 0; src < N_NODES; ++src) {
-        for(int dest = 0; dest < N_NODES; ++dest) {
-            if(src != dest) {
-                int numPaths = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
-                cout <<"All simple paths computed and stored! " << numPaths << " paths between " << src << " and " << dest << "\n";
-            }
-        }
-    }
-    //At this point, we COULD delete[] any paths in the array that we didn't use.
-
-
-    cout << "all simple paths computed!\n";
-
-    //Clean up our memory
-    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
-        delete[] ps[i];
-    }
-    delete[] ps;
-    cout << "ps deleted";
-
+    simulate(vertexList,edgeList);
 
     /*Use this for computing all primary/backup combos
     for(int x = 0; x < 100; ++x) {
@@ -207,7 +184,401 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-int computeAllSimplePathsN(SimplePath **ps, int vertexList[], Edge edgeList[2*N_EDGES], int sourceNode, int destNode, int hops) {
+void simulate(int *vertexList, Edge *edgeList){
+    int connectionNum = 0;
+    //We want to compute and store all possible paths between our source and desitination.
+    SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
+    int *npaths = new int[N_NODES*N_NODES];
+
+    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
+        ps[i] = new SimplePath[NUM_CONNECTIONS];
+    }
+
+    cout <<"ps created\n";
+
+    //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
+    for(int src = 0; src < N_NODES; ++src) {
+        for(int dest = 0; dest < N_NODES; ++dest) {
+            if(src != dest) {
+                int index = (src*N_NODES)+dest;
+                npaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
+                cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
+            }
+        }
+    }
+    //At this point, we COULD delete[] any paths in the array that we didn't use.
+    cout << "all simple paths computed!\n";
+
+
+    for(int num = 0; num < 45; ++num) {
+    //Attempt to allocate SOME connection onto the network
+    //int s = 0;
+    //int d = 9;
+    int s = rand() % N_NODES;
+    int d = rand() % N_NODES;
+    while(s == d) {
+        s = rand()%N_NODES;
+        d = rand()%N_NODES;
+    }
+
+    //Allocate storage for the potential primary/backup path combos
+    int index = (s*N_NODES) + d;
+    int numPossiblePaths = npaths[index];
+
+    //Stores indices into the ps[index][] array for each disjoint backup path.
+    //potPathInd[i][j] = k where ps[index][k] is a path that is edge-disjoint from ps[index][i].
+    int ** potPathInd = new int*[numPossiblePaths];
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        potPathInd[i] = new int[numPossiblePaths];
+    }
+
+
+    //Find all paths which are edge-disjoint from this primary.
+    int k = -1;
+    //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
+        //cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
+    }
+
+
+
+    //Compute the Cost for each backup path.
+    int ** pathCosts = new int*[numPossiblePaths];
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        pathCosts[i] = new int[numPossiblePaths];
+    }
+
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        computeCostForBackups(ps[index],potPathInd[i],numPossiblePaths,i,pathCosts[i],channels);
+    }
+
+
+
+    //Select cheapest connection
+    int minCost = 100000000;
+    int minPrimInd = -1;
+    int minBackInd = -1;
+
+    for(int p = 0; p < numPossiblePaths; ++p) {
+        int backInd = 0;
+        int primaryCost = ps[index][p].hops;
+
+        while(pathCosts[p][backInd] != -1) {
+            if((pathCosts[p][backInd] + primaryCost) < minCost) {
+                minCost = (pathCosts[p][backInd] + primaryCost);
+                minPrimInd = p;
+                minBackInd = backInd;
+            }
+            backInd++;
+        }
+    }
+    cout << "Min cost is: " << minCost << "\n";
+
+
+
+    //--------------Store the connection--------------//
+    cons[connectionNum].sourceNode = s;
+    cons[connectionNum].destNode = d;
+    cons[connectionNum].combinedCost = minCost;
+    cons[connectionNum].validBackup = true;
+    cons[connectionNum].validPrimary = true;
+    cons[connectionNum].backupPath = new Path();
+    cons[connectionNum].primaryPath = new Path();
+    (*cons[connectionNum].primaryPath).hops = ps[index][minPrimInd].hops;
+    (*cons[connectionNum].primaryPath).index = ps[index][minPrimInd].index;
+    (*cons[connectionNum].primaryPath).primary = true;
+    (*cons[connectionNum].backupPath).hops = ps[index][potPathInd[minPrimInd][minBackInd]].hops;
+    (*cons[connectionNum].backupPath).index = ps[index][potPathInd[minPrimInd][minBackInd]].index;
+
+    for(int p = 0; p <= ps[index][minPrimInd].index; ++p) {
+        (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimInd].edges[p];
+        (*cons[connectionNum].primaryPath).freeEdges[p] = false;
+    }
+    for(int p = 0; p <= ps[index][potPathInd[minPrimInd][minBackInd]].index; ++p) {
+        (*cons[connectionNum].backupPath).edges[p] = ps[index][potPathInd[minPrimInd][minBackInd]].edges[p];
+    }
+
+    //Select Channels
+    selectChannels(&cons[connectionNum],channels);
+
+    //Increase the network load
+    increaseLoad(&cons[connectionNum],channels);
+
+
+    //--------------Print Network Load--------------//
+    for(int m = 0; m < 2*N_EDGES; ++m) {
+        cout << "LOAD: " << edgeList[m].v1 << " -> " << edgeList[m].v2 << ": " << edgeList[m].load << " | TP: " << edgeList[m].totalProtected << " | ";
+        if(edgeList[m].load > 0) {
+            for(int c = 0; c < edgeList[m].load; ++c) {
+                cout << "C" << c << ": " << channels[m][c].numBackups << " ";
+                if(channels[m][c].primary == true) {
+                    cout << "P ";
+                }
+            }
+        }
+        cout << "\n";
+
+    }
+
+
+    //--------------Clean up memory--------------//
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        delete[] potPathInd[i];
+    }
+    delete[] potPathInd;
+
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        delete[] pathCosts[i];
+    }
+    delete[] pathCosts;
+    connectionNum++;
+}//end loop
+
+    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
+        delete[] ps[i];
+    }
+    delete[] ps;
+    delete[] npaths;
+    cout << "ps and npaths deleted\n";
+}
+
+void increaseLoad(Connection2 *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]) {
+    if((*(*connection).primaryPath).index < 0) {
+        cout << "Primary Path DNE?\n";
+        return;
+    }
+    //Increment the network load; put the backup on the channels
+
+    //Here we are incrementing the network load for the PRIMARY PATH
+    for(int i = 0; i <= (*(*connection).primaryPath).index; ++i) {
+
+        //Every edge in the primary path gets its load increased
+        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].primary = true;
+        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].backupsOnChannel[0] = connection;
+        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups += 1;
+        (*(*(*connection).primaryPath).edges[i]).load += 1;
+        (*(*(*connection).primaryPath).edges[i]).totalProtected += 1;
+    }
+
+    //Here we are increasing the network load for the BACKUP PATH
+    for(int i = 0; i <= (*(*connection).backupPath).index; ++i) {
+        //Temp
+        Edge *e = (*(*connection).backupPath).edges[i];
+        int cNum = (*(*connection).backupPath).channelNum[i];
+
+        //first path to use this channel, or this is not a free edge for the backup path.
+        //if(channels[(*e).edgeNum][cNum].numBackups == 0 || (*(*connection).backupPath).freeEdges[i] == false) {
+        if((*(*connection).backupPath).freeEdges[i] == false) {
+            (*e).load += 1;
+        }
+
+        //Marks that the connection is protected on this channel.
+        int en = (*e).edgeNum;
+        int numbs = channels[en][cNum].numBackups;
+        channels[en][cNum].primary = false;
+        channels[en][cNum].backupsOnChannel[numbs] = connection;
+        channels[en][cNum].numBackups += 1;
+        (*e).totalProtected +=1;
+    }
+
+}
+
+//TODO: This method contains a lot of redundant code that is also in computeCostForBackups. Consider combining.
+//I wanted to modularize the code as much as possible this time around, which is why there's so much redundancy in this method.
+void selectChannels(Connection2 *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
+
+    cout << "prim\n";
+    for(int i = 0; i <= (*(*c).primaryPath).index; ++i) {
+        cout << (*(*(*c).primaryPath).edges[i]).v1 << " -> " << (*(*(*c).primaryPath).edges[i]).v2 << "\n";
+    }
+    cout << "back\n";
+    for(int i = 0; i <= (*(*c).backupPath).index; ++i) {
+        cout << (*(*(*c).backupPath).edges[i]).v1 << " -> " << (*(*(*c).backupPath).edges[i]).v2 << "\n";
+    }
+
+    int edgeNum = -1;
+    //Select Primary path channels;
+    for(int p = 0; p <= (*(*c).primaryPath).index; ++p){
+        edgeNum = (*(*(*c).primaryPath).edges[p]).edgeNum;
+        bool allSet = false;
+        for(int ch = 0; !allSet && ch < MAX_CHANNELS; ++ch) {
+            if(chan[edgeNum][ch].numBackups == 0) {
+                allSet = true;
+                (*(*c).primaryPath).channelNum[p] = ch;
+            }
+        }
+    }
+
+    for(int e = 0; e <= (*(*c).backupPath).index; ++e) {
+        bool free = false;
+        edgeNum = (*(*(*c).backupPath).edges[e]).edgeNum;
+        int firstOpenChannel = MAX_CHANNELS+1;
+
+        for(int ch = 0; !free && ch < MAX_CHANNELS; ++ch) {
+
+            if(chan[edgeNum][ch].primary == true) {
+                continue;
+            }
+
+            //At this point, we know that there are no primary paths on this channel
+            //Thus we must check and see if it is "free".
+
+            //we COULD use this channel, but there may be a "free" one further down.
+            if(chan[edgeNum][ch].numBackups == 0) {
+                if(ch < firstOpenChannel) {
+                    firstOpenChannel = ch;
+                }
+                continue;
+            }
+
+            bool disjoint = true;
+
+            //Check every connection currently on protected on the channel
+            for(int bup = 0; disjoint && bup < chan[edgeNum][ch].numBackups; ++bup) {
+
+                //At this point, we know that there is at least one path protected on this channel.
+                //Technically, we should also know that it's not a primary path.
+
+                //for each edge of the protected connection's primary path
+                for(int e2 = 0; disjoint && e2 <= (*(*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+
+                    //see if its the same edge as used by our primary path.
+                    for(int e3 = 0; disjoint && e3 <= (*(*c).primaryPath).index; ++e3 ) {
+
+                        if((*(*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath).edges[e2] == (*(*c).primaryPath).edges[e3]) {
+                            //There is a non-disjoint primary path on this channel, so it is unusable.
+                            //goto CHANNEL_LOOP_END;
+                            disjoint = false;
+                        }
+                    }
+                }
+            }
+
+            if(disjoint) {
+                //This channel is free
+                free = true;
+                (*(*c).backupPath).channelNum[e] = ch;
+                (*(*c).backupPath).freeEdges[e] = true;
+            }
+        }
+
+        if((*(*c).backupPath).freeEdges[e] == false) {
+            (*(*c).backupPath).channelNum[e] = firstOpenChannel;
+        }
+    }
+    cout << "all set?\n";
+}
+
+//TODO: Need to test once we actually start loading the network.
+void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int primaryInd, int *pathCosts, Channel cs[2*N_EDGES][MAX_CHANNELS]) {
+
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        if(potPathInd[i] == -1) {
+            pathCosts[i] = -1;
+            break;
+        }
+        int pid = potPathInd[i];
+        int cost = 0;
+
+        for(int e = 0; e <= p[pid].index; ++e) {
+            bool free = false;
+            int edgeNum = (*p[pid].edges[e]).edgeNum;
+            int firstOpenChannel = MAX_CHANNELS+1;
+
+            for(int c = 0; !free && c < MAX_CHANNELS; ++c) {
+
+                if(cs[edgeNum][c].primary == true) {
+                    continue;
+                }
+
+                //At this point, we know that there are no primary paths on this channel
+                //Thus we must check and see if it is "free".
+
+                //we COULD use this channel, but there may be a "free" one further down.
+                if(cs[edgeNum][c].numBackups == 0) {
+                    if(c < firstOpenChannel) {
+                        firstOpenChannel = c;
+                    }
+                    continue;
+                }
+
+                bool disjoint = true;
+
+                //Check every connection currently on protected on the channel
+                for(int bup = 0; disjoint && bup < channels[edgeNum][c].numBackups; ++bup) {
+
+                    //At this point, we know that there is at least one path protected on this channel.
+                    //Technically, we should also know that it's not a primary path.
+
+                    //for each edge of the protected connection's primary path
+                    for(int e2 = 0; disjoint && e2 <= (*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+
+                        //see if its the same edge as used by our primary path.
+                        for(int e3 = 0; disjoint && e3 <= p[primaryInd].index; ++e3 ) {
+
+                            if((*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).edges[e2] == p[primaryInd].edges[e3]) {
+                                //There is a non-disjoint primary path on this channel, so it is unusable.
+
+                                disjoint = false;
+                            }
+                        }
+                    }
+                }
+
+                if(disjoint) {
+                    //This channel is free
+                    free = true;
+                }
+            }
+
+            if(!free) {
+                if(firstOpenChannel < MAX_CHANNELS) {
+                    cost++;
+                }else {
+                    cost = 1000000;
+                    break;
+                }
+
+            }
+
+        }
+
+        pathCosts[i] = cost;
+    }
+}
+
+//TODO: Give each thread an index into the array of simple paths, and have them check to see if "their" path is compatible.
+int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd) {
+    int numDisjoint = 0;
+    //First pass checks to see which simple paths are disjoint from the primary path.
+    for(int i = 0; i < numPossiblePaths; ++i) {
+        if(i == pInd) {//TODO: Shouldn't even need this, they will clearly be edge-disjoint
+            continue;
+        }
+
+        bool disjoint = true;
+        //Check each edge to make sure they're disjoint
+        for(int e1 = 0; disjoint && e1 <= p[pInd].index; ++e1) {
+            for(int e2 = 0; disjoint && e2 <= p[i].index; ++e2) {
+                if(p[i].edges[e2] == p[pInd].edges[e1]) {
+                    disjoint = false;
+                }
+            }
+        }
+        if(disjoint) {
+            potPathInd[numDisjoint] = i;
+            numDisjoint++;
+        }
+
+    }
+    //Mark the end of the array
+    potPathInd[numDisjoint] = -1;
+    //cout << "disjoint: " << numDisjoint << " out of " << numPossiblePaths <<"\n";
+    return numDisjoint;
+}
+
+int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int sourceNode, int destNode, int hops) {
     int index = (sourceNode * N_NODES) + destNode;
 
     //initialize arrays
