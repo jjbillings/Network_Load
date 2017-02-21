@@ -1639,6 +1639,7 @@ void printPath(Path *path) {
     cout << (*(*path).edges[(*path).index]).v1 << " -> " << (*(*path).edges[(*path).index]).v2 << "\n\n";
 }
 
+/*
 void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES],int sampleNum, int numIncompleteConnections) {
     ofstream outputFile;
     string filename ("./load_per_edge/load_per_edge_");
@@ -1656,4 +1657,4 @@ void exportNetworkLoad(Connection conns[NUM_CONNECTIONS],Edge edgeList[2*N_EDGES
     for(int j = 0; j < NUM_CONNECTIONS; ++j) {
         conns[j] = Connection();
     }
-}
+}*/
