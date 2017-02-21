@@ -1,5 +1,5 @@
 /*
- * File:   main.cpp
+ * File:   maingpu.cu
  * Author: jjbillings
  *
  * Created on October 16, 2016, 9:09 PM
@@ -93,6 +93,18 @@ Edge reorderedEdgeList[2*N_EDGES];
 Connection cons[NUM_CONNECTIONS];
 Channel channels[2*N_EDGES][MAX_CHANNELS];
 
+__global__ void testFunc(SimplePath *ps) {
+  for(int i = 0; i < N_NODES*N_NODES; ++i) {
+    for(int j = 0; j < NUM_CONNECTIONS; ++j) {
+      if(ps[(i*(N_NODES*N_NODES))+j].hops > 0) {
+	printf("%d\n",ps[(i*(N_NODES*N_NODES))+j].hops);
+      }
+    }
+  }
+  printf("PRINTING FROM GPU\n");
+}
+
+
 /*
  *TODO: I totally thought I made the algorithm be based on BFS, but it is in fact based on DFS.
  *So REVERSE the order of the edge list. Currently, the neighbor with the lowest degree gets pushed
@@ -111,7 +123,7 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    simulate(vertexList,edgeList);
+    simulate_GPU(vertexList,edgeList);
     return 0;
 }
 
@@ -143,16 +155,29 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //At this point, we COULD delete[] any paths in the array that we didn't use.
     cout << "all simple paths computed!\n";
 
+    int sp_size = sizeof(SimplePath);
+    const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
+    const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array
 
-    //Attempt to allocate SOME connection onto the network
-    //int s = 0;
-    //int d = 9;
-    int s = rand() % N_NODES;
-    int d = rand() % N_NODES;
-    while(s == d) {
-        s = rand()%N_NODES;
-        d = rand()%N_NODES;
+    SimplePath *d_ps; //Device pointer for the array of SimplePaths
+
+    if(cudaSuccess != cudaMalloc((void **)&d_ps,ps_size)) {
+    	cout << "Malloc Error\n";
     }
+    cout << "allocated SimplePaths array on Device\n";
+    
+    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
+      cudaMemcpy(d_ps + (i*(N_NODES*N_NODES)),ps[i],row_size,cudaMemcpyHostToDevice);
+    }
+    cout << "ps array copied to device\n";
+
+    testFunc<<<1,1>>>(d_ps);
+    
+    cudaFree(d_ps);
+    cout << "ps array freed from device\n";
+    //Attempt to allocate SOME connection onto the network
+    int s = 0;
+    int d = 9;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
