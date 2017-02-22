@@ -19,6 +19,7 @@ C++ app to simulate the load on an optical network.
 		- [ ] * Memory Management
 		- [x] * Copy SimplePaths array to GPU
 		- [ ] * Write Kernel for determineCompatibleBackups()
+			- [ ] * Figure out how to index into the arrays via threads/blocks
 			- [ ] * Combine pathCosts array and potPathInd array into one
 	- [ ] * Measure GPU running time
 - [ ] 4. Phase 2
