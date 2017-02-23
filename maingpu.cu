@@ -93,22 +93,10 @@ Edge reorderedEdgeList[2*N_EDGES];
 Connection cons[NUM_CONNECTIONS];
 Channel channels[2*N_EDGES][MAX_CHANNELS];
 
-__global__ void testFunc(SimplePath *ps) {
-  for(int i = 0; i < N_NODES*N_NODES; ++i) {
-    for(int j = 0; j < NUM_CONNECTIONS; ++j) {
-      if(ps[(i*(N_NODES*N_NODES))+j].hops > 0) {
-
-	printf("Hops: %d\n",ps[(i*(N_NODES*N_NODES))+j].hops);
-      }
-    }
-  }
-  printf("PRINTING FROM GPU\n");
-}
 
 __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
   //Block - N_NODES*N_NODES. THreads/block = NUM_CONNECTIONS
- // const size_t sp_size = sizeof(SimplePath);
-  //int index = (blockIdx.x * NUM_CONNECTIONS) + (threadIdx.x);
+ 
   int p_ind = conInd * blockIdx.x;
   int b_ind = conInd * threadIdx.x;
   int output_ind = blockIdx.x * threadIdx.x;
@@ -116,8 +104,24 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
     return;
   }
 
-  if(ps[p_ind].hops > 0 && ps[b_ind].hops > 0) {
-    printf("Block: %d, Thread: %d, p_ind: %d, p_Hops: %d, b_ind: %d, b_Hops: %d\n",blockIdx.x,threadIdx.x,p_ind,ps[p_ind].hops,b_ind,ps[b_ind].hops);
+  int primIndex = ps[p_ind].index;
+  int backIndex = ps[b_ind].index;
+  if(primIndex > 0 && backIndex > 0) {//Unnecessary? the for loop just wouldn't execute...
+    // printf("Block: %d, Thread: %d, p_ind: %d, p_Hops: %d, b_ind: %d, b_Hops: %d\n",blockIdx.x,threadIdx.x,p_ind,ps[p_ind].hops,b_ind,ps[b_ind].hops);
+    bool disjoint = true;
+    
+    for(int e1 = 0; disjoint && e1 <= primIndex; ++e1) {
+      for(int e2 = 0; disjoint && e2 <= backIndex; ++e2){
+	if(ps[p_ind].edges[e1] == ps[b_ind].edges[e2]) {
+	  disjoint = false;
+	}
+      }
+    }
+    if(disjoint) {
+      potPathCosts[output_ind] = 1;
+    }else {
+      potPathCosts[output_ind] = -1;
+    }
   }
 }
 
