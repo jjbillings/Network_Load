@@ -97,13 +97,29 @@ __global__ void testFunc(SimplePath *ps) {
   for(int i = 0; i < N_NODES*N_NODES; ++i) {
     for(int j = 0; j < NUM_CONNECTIONS; ++j) {
       if(ps[(i*(N_NODES*N_NODES))+j].hops > 0) {
-	printf("%d\n",ps[(i*(N_NODES*N_NODES))+j].hops);
+
+	printf("Hops: %d\n",ps[(i*(N_NODES*N_NODES))+j].hops);
       }
     }
   }
   printf("PRINTING FROM GPU\n");
 }
 
+__global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
+  //Block - N_NODES*N_NODES. THreads/block = NUM_CONNECTIONS
+ // const size_t sp_size = sizeof(SimplePath);
+  //int index = (blockIdx.x * NUM_CONNECTIONS) + (threadIdx.x);
+  int p_ind = conInd * blockIdx.x;
+  int b_ind = conInd * threadIdx.x;
+  int output_ind = blockIdx.x * threadIdx.x;
+  if(p_ind == b_ind){
+    return;
+  }
+
+  if(ps[p_ind].hops > 0 && ps[b_ind].hops > 0) {
+    printf("Block: %d, Thread: %d, p_ind: %d, p_Hops: %d, b_ind: %d, b_Hops: %d\n",blockIdx.x,threadIdx.x,p_ind,ps[p_ind].hops,b_ind,ps[b_ind].hops);
+  }
+}
 
 /*
  *TODO: I totally thought I made the algorithm be based on BFS, but it is in fact based on DFS.
@@ -129,18 +145,35 @@ int main(int argc, char** argv) {
 
 void simulate_GPU(int *vertexList, Edge *edgeList){
     int connectionNum = 0;
+    const size_t sp_size = sizeof(SimplePath);
+    const size_t d_array_size = (NUM_CONNECTIONS * NUM_CONNECTIONS);
+    const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
+    const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array
+
+    //Test Data
+    int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
+    int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
+    
     //We want to compute and store all possible paths between our source and desitination.
     SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
     int *npaths = new int[N_NODES*N_NODES];
 
-    int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
-    int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
+    SimplePath *d_ps; //Device pointer for the array of SimplePaths
+    int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
 
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
     }
 
     cout <<"ps created\n";
+
+    if(cudaSuccess != cudaMalloc((void **)&d_ps,ps_size)) {
+    	cout << "Malloc Error\n";
+    }
+    cout << "allocated SimplePaths array on Device\n";
+
+    cudaMalloc((void **)&d_potPathCosts,d_array_size*sizeof(int));
+    cout << "allocated potential Path Costs array on device\n";
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
     for(int src = 0; src < N_NODES; ++src) {
@@ -155,26 +188,20 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //At this point, we COULD delete[] any paths in the array that we didn't use.
     cout << "all simple paths computed!\n";
 
-    int sp_size = sizeof(SimplePath);
-    const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
-    const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array
 
-    SimplePath *d_ps; //Device pointer for the array of SimplePaths
-
-    if(cudaSuccess != cudaMalloc((void **)&d_ps,ps_size)) {
-    	cout << "Malloc Error\n";
-    }
-    cout << "allocated SimplePaths array on Device\n";
-    
+    //Copy Simple paths to the GPU
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
       cudaMemcpy(d_ps + (i*(N_NODES*N_NODES)),ps[i],row_size,cudaMemcpyHostToDevice);
     }
     cout << "ps array copied to device\n";
 
-    testFunc<<<1,1>>>(d_ps);
-    
-    cudaFree(d_ps);
-    cout << "ps array freed from device\n";
+    //    testFunc<<<1,1>>>(d_ps);
+    cout << "Attempting function call\n";
+    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,(0*N_NODES + 9));
+
+    if(cudaSuccess != cudaGetLastError()) {
+      cout << "CUDA ERROR IN KERNEL\n";
+    }
     //Attempt to allocate SOME connection onto the network
     int s = 0;
     int d = 9;
@@ -298,6 +325,10 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     delete[] ps;
     delete[] npaths;
     cout << "ps and npaths deleted\n";
+    
+    cudaFree(d_ps);
+    cout << "ps array freed from device\n";
+
 }
 
 
