@@ -97,7 +97,7 @@ Channel channels[2*N_EDGES][MAX_CHANNELS];
 
 __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
  
-  int p_ind = (conInd*NUM_CONNECTIONS) +  blockIdx.x;
+  int p_ind = (conInd * NUM_CONNECTIONS) +  blockIdx.x;
   int b_ind = (conInd * NUM_CONNECTIONS) +  threadIdx.x;
   int output_ind = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
   if(p_ind == b_ind){
@@ -108,13 +108,14 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
 
   int primIndex = ps[p_ind].index;
   int backIndex = ps[b_ind].index;
-  if(p_ind == 0) {
-      printf("b_ind: %d, output_ind: %d, hops: %d, index: %d\n",b_ind, output_ind,ps[b_ind].hops,ps[b_ind].index); 
-  }
-  if(primIndex >= 0 && backIndex >= 0) {//Unnecessary? the for loop just wouldn't execute...
+  //if(blockIdx.x == 85) {
+    //printf("b_ind: %d, p_ind: %d, output_ind: %d, P_Index: %d, B_Index: %d, PS: %d, PD: %d, BS: %d, BD: %d\n",b_ind,p_ind, output_ind,ps[p_ind].index,ps[b_ind].index,ps[p_ind].sourceNode,ps[p_ind].destNode,ps[b_ind].sourceNode,ps[b_ind].destNode); 
+    //}
+  if(primIndex >= 0 && backIndex >= 0 && ps[p_ind].hops > 0 && ps[b_ind].hops > 0) {//Unnecessary? the for loop just wouldn't execute...
     // printf("Block: %d, Thread: %d, p_ind: %d, p_Hops: %d, b_ind: %d, b_Hops: %d\n",blockIdx.x,threadIdx.x,p_ind,ps[p_ind].hops,b_ind,ps[b_ind].hops);
     bool disjoint = true;
-    
+
+    //printf("SP: %d, DP: %d, SP: %d, SB: %d\n",ps[p_ind].sourceNode,ps[p_ind].destNode,ps[b_ind].sourceNode,ps[b_ind].destNode);
     for(int e1 = 0; disjoint && e1 <= primIndex; ++e1) {
       for(int e2 = 0; disjoint && e2 <= backIndex; ++e2){
 	if(ps[p_ind].edgeNums[e1] == ps[b_ind].edgeNums[e2]) {
@@ -209,7 +210,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cout << "ps array copied to device\n";
 
     cout << "Attempting function call\n";
-    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,((0*N_NODES) + 1));
+    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,((2*N_NODES) + 9));
 
     if(cudaSuccess != cudaGetLastError()) {
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
@@ -220,24 +221,25 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //THIS IS PURELY FOR TESTING PURPOSES
     int numCompat = 0;
     int numIncompat = 0;
-    for(int i = 0; i < 1; ++i) {
+    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
       for(int j = 0; j < NUM_CONNECTIONS; ++j) {
 	int ind = (i*NUM_CONNECTIONS)+j;
 	if(h_potPathCosts[ind] == 1) {
 	    numCompat++;
-	    cout << "index: " << ind << " COST: " << h_potPathCosts[ind] << "\n";
+	    //cout << "index: " << ind << " COST: " << h_potPathCosts[ind] << "\n";
 	}
 	if(h_potPathCosts[ind] == -1) {
 	  numIncompat++;
 	}
       }
+      cout << "GPU_" << i << ": " << numCompat << "\n";
     }
     cout << "NUM_COMPAT_GPU: " << numCompat << "\n";
     cout << "NUM_INCOMPAT_GPU: " << numIncompat << "\n";
     
     //Attempt to allocate SOME connection onto the network
-    int s = 0;
-    int d = 1;
+    int s = 2;
+    int d = 9;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -254,14 +256,14 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //--------------Find all paths which are edge-disjoint from this primary--------------//
     int numCompatCPU = 0;
     int numIncompatCPU = 0;
-    int k = -1;
+    int k = 0;
     //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
         k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
-	if(i==0) {
-	  numCompatCPU = k;
-	}
-        //cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
+	
+	  numCompatCPU += k;
+	
+	  cout << "Number of paths which are disjoint from this primary path_" << i << ": " << numCompatCPU << "\n";
     }
 
     cout << "NUM_COMPAT_CPU: " << numCompatCPU << "\n";
@@ -743,7 +745,7 @@ int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePa
     int numConf = 0;
     //First pass checks to see which simple paths are disjoint from the primary path.
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-      if(p[i].hops <= 0 || p[i].index < 0){numConf++; continue;}
+      if(p[i].hops <= 0 || p[i].index < 0|| p[pInd].hops <= 0 || p[pInd].index < 0){numConf++; continue;}
         bool disjoint = true;
         //Check each edge to make sure they're disjoint
         for(int e1 = 0; disjoint && e1 <= p[pInd].index; ++e1) {
@@ -755,9 +757,6 @@ int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePa
             }
         }
         if(disjoint) {
-	  if(pInd == 0){
-	  cout << "cpuind: " << i << "\n";
-	  }
             potPathInd[numDisjoint] = i;
             numDisjoint++;
         }
@@ -765,9 +764,6 @@ int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePa
     }
     //Mark the end of the array
     potPathInd[numDisjoint] = -1;
-    if(pInd ==0){
-      cout << "non-disjoint: " << numConf << "\n";
-    }
     //cout << "disjoint: " << numDisjoint << " out of " << numPossiblePaths <<"\n";
     return numDisjoint;
 }
