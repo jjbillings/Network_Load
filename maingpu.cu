@@ -100,18 +100,16 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
   int p_ind = (conInd * NUM_CONNECTIONS) +  blockIdx.x;
   int b_ind = (conInd * NUM_CONNECTIONS) +  threadIdx.x;
   int output_ind = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
-  if(p_ind == b_ind){
-    potPathCosts[output_ind] = -1;
-    return;
-  }
 
 
   int primIndex = ps[p_ind].index;
   int backIndex = ps[b_ind].index;
+  
   //if(blockIdx.x == 85) {
     //printf("b_ind: %d, p_ind: %d, output_ind: %d, P_Index: %d, B_Index: %d, PS: %d, PD: %d, BS: %d, BD: %d\n",b_ind,p_ind, output_ind,ps[p_ind].index,ps[b_ind].index,ps[p_ind].sourceNode,ps[p_ind].destNode,ps[b_ind].sourceNode,ps[b_ind].destNode); 
     //}
-  if(primIndex >= 0 && backIndex >= 0 && ps[p_ind].hops > 0 && ps[b_ind].hops > 0) {//Unnecessary? the for loop just wouldn't execute...
+  
+  if(ps[p_ind].hops > 0 && ps[b_ind].hops > 0) {//Unnecessary? the for loop just wouldn't execute...
     // printf("Block: %d, Thread: %d, p_ind: %d, p_Hops: %d, b_ind: %d, b_Hops: %d\n",blockIdx.x,threadIdx.x,p_ind,ps[p_ind].hops,b_ind,ps[b_ind].hops);
     bool disjoint = true;
 
@@ -129,8 +127,8 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
       potPathCosts[output_ind] = -1;
     }
   }else {
-      potPathCosts[output_ind] = -1;
-  }
+    potPathCosts[output_ind] = -1;
+   }
 }
 
 /*
@@ -194,23 +192,28 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
             if(src != dest) {
                 int index = (src*N_NODES)+dest;
                 npaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
-                cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
+                //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
             }
         }
     }
-    //At this point, we COULD delete[] any paths in the array that we didn't use.
-    cout << "all simple paths computed!\n";
 
 
     //Copy Simple paths to the GPU
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
       cudaMemcpy(d_ps + (i*(NUM_CONNECTIONS)),ps[i],row_size,cudaMemcpyHostToDevice);
     }
-    //cudaMemcpy(d_ps, ps, ps_size,cudaMemcpyHostToDevice);
-    cout << "ps array copied to device\n";
 
-    cout << "Attempting function call\n";
-    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,((2*N_NODES) + 9));
+
+    //Attempt to allocate SOME connection onto the network
+    int s = 0;
+    int d = 1;
+
+    //Allocate storage for the potential primary/backup path combos
+    int index = (s*N_NODES) + d;
+    
+
+    //-----------Launch the Kernel-------------//
+    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
 
     if(cudaSuccess != cudaGetLastError()) {
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
@@ -232,17 +235,12 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	  numIncompat++;
 	}
       }
-      cout << "GPU_" << i << ": " << numCompat << "\n";
+      //cout << "GPU_" << i << ": " << numCompat << "\n";
     }
     cout << "NUM_COMPAT_GPU: " << numCompat << "\n";
     cout << "NUM_INCOMPAT_GPU: " << numIncompat << "\n";
     
-    //Attempt to allocate SOME connection onto the network
-    int s = 2;
-    int d = 9;
-
-    //Allocate storage for the potential primary/backup path combos
-    int index = (s*N_NODES) + d;
+    
     int numPossiblePaths = npaths[index];
 
     //Stores indices into the ps[index][] array for each disjoint backup path.
@@ -263,7 +261,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	
 	  numCompatCPU += k;
 	
-	  cout << "Number of paths which are disjoint from this primary path_" << i << ": " << numCompatCPU << "\n";
+	  //cout << "Number of paths which are disjoint from this primary path_" << i << ": " << numCompatCPU << "\n";
     }
 
     cout << "NUM_COMPAT_CPU: " << numCompatCPU << "\n";
@@ -872,6 +870,8 @@ int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int
         }
 
     }
+    //Last path is invalid
+    ps[index][currentPath].hops = 0;
     return currentPath;
 }
 
