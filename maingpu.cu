@@ -1,5 +1,5 @@
 /*
- * File:   main.cpp
+ * File:   maingpu.cu
  * Author: jjbillings
  *
  * Created on October 16, 2016, 9:09 PM
@@ -47,6 +47,7 @@ struct SimplePath {
 
     int hops;
     int index;
+    int edgeNums[N_NODES];
 
     Edge *edges[N_NODES];
 };
@@ -93,6 +94,40 @@ Edge reorderedEdgeList[2*N_EDGES];
 Connection cons[NUM_CONNECTIONS];
 Channel channels[2*N_EDGES][MAX_CHANNELS];
 
+
+__global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
+ 
+  int p_ind = (conInd * NUM_CONNECTIONS) +  blockIdx.x;
+  int b_ind = (conInd * NUM_CONNECTIONS) +  threadIdx.x;
+  int output_ind = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
+
+
+  int primIndex = ps[p_ind].index;
+  int backIndex = ps[b_ind].index;
+
+  int primHops = ps[p_ind].hops;
+  int backHops = ps[b_ind].hops;
+  
+  if(primHops > 0 && backHops > 0) {
+    bool disjoint = true;
+
+    for(int e1 = 0; disjoint && e1 <= primIndex; ++e1) {
+      for(int e2 = 0; disjoint && e2 <= backIndex; ++e2){
+	if(ps[p_ind].edgeNums[e1] == ps[b_ind].edgeNums[e2]) {
+	  disjoint = false;
+	}
+      }
+    }
+    if(disjoint) {
+      potPathCosts[output_ind] = 1;
+    }else {
+      potPathCosts[output_ind] = -1;
+    }
+  }else {
+    potPathCosts[output_ind] = -1;
+  }
+}
+
 /*
  *TODO: I totally thought I made the algorithm be based on BFS, but it is in fact based on DFS.
  *So REVERSE the order of the edge list. Currently, the neighbor with the lowest degree gets pushed
@@ -111,24 +146,42 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    simulate(vertexList,edgeList);
+    simulate_GPU(vertexList,edgeList);
     return 0;
 }
 
 void simulate_GPU(int *vertexList, Edge *edgeList){
     int connectionNum = 0;
-    //We want to compute and store all possible paths between our source and desitination.
+    const size_t sp_size = sizeof(SimplePath);
+    const size_t d_array_size = (NUM_CONNECTIONS * NUM_CONNECTIONS);
+    const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
+    const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array of SimplePaths
+
+    //Test Data
+    int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
+    int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
+    
     SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
     int *npaths = new int[N_NODES*N_NODES];
 
-    int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
-    int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
+    SimplePath *d_ps; //Device pointer for the array of SimplePaths
+    int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
+    int *h_potPathCosts; //Host pointer for the array of potential path costs.
 
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
     }
 
-    cout <<"ps created\n";
+
+    if(cudaSuccess != cudaMalloc((void **)&d_ps,ps_size)) {
+    	cout << "Malloc Error\n";
+    }
+    cout << "allocated SimplePaths array on Device\n";
+
+    cudaMalloc((void **)&d_potPathCosts,d_array_size*sizeof(int));
+    cout << "allocated potential Path Costs array on device\n";
+
+    h_potPathCosts = (int *)malloc(d_array_size*sizeof(int));
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
     for(int src = 0; src < N_NODES; ++src) {
@@ -136,45 +189,53 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
             if(src != dest) {
                 int index = (src*N_NODES)+dest;
                 npaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
-                cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
+                //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
             }
         }
     }
-    //At this point, we COULD delete[] any paths in the array that we didn't use.
-    cout << "all simple paths computed!\n";
+
+
+    //Copy Simple paths to the GPU
+    for(int i = 0; i < (N_NODES*N_NODES); ++i) {
+      cudaMemcpy(d_ps + (i*(NUM_CONNECTIONS)),ps[i],row_size,cudaMemcpyHostToDevice);
+    }
 
 
     //Attempt to allocate SOME connection onto the network
-    //int s = 0;
-    //int d = 9;
-    int s = rand() % N_NODES;
-    int d = rand() % N_NODES;
-    while(s == d) {
-        s = rand()%N_NODES;
-        d = rand()%N_NODES;
-    }
+    int s = 0;
+    int d = 1;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
+    
+
+    //-----------Launch the Kernel-------------//
+    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
+
+    if(cudaSuccess != cudaGetLastError()) {
+      cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
+    }
+
+    cudaMemcpy(h_potPathCosts,d_potPathCosts,(d_array_size*sizeof(int)),cudaMemcpyDeviceToHost);    
+    
     int numPossiblePaths = npaths[index];
 
     //Stores indices into the ps[index][] array for each disjoint backup path.
     //potPathInd[i][j] = k where ps[index][k] is a path that is edge-disjoint from ps[index][i].
-    int ** potPathInd = new int*[numPossiblePaths];
-    for(int i = 0; i < numPossiblePaths; ++i) {
-        potPathInd[i] = new int[numPossiblePaths];
+    int ** potPathInd = new int*[NUM_CONNECTIONS];
+    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
+        potPathInd[i] = new int[NUM_CONNECTIONS];
     }
 
 
     //--------------Find all paths which are edge-disjoint from this primary--------------//
-    int k = -1;
+    int k = 0;
     //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
-    for(int i = 0; i < numPossiblePaths; ++i) {
+    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
         k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
-        //cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
+	
     }
-
-
+    
 
     //--------------Compute Cost for each backup path--------------//
     int ** pathCosts = new int*[numPossiblePaths];
@@ -273,6 +334,13 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     delete[] ps;
     delete[] npaths;
     cout << "ps and npaths deleted\n";
+    
+    cudaFree(d_ps);
+    cudaFree(d_potPathCosts);
+
+    free(h_potPathCosts);
+    cout << "ps array freed from device\n";
+
 }
 
 
@@ -640,18 +708,20 @@ void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths,
     }
 }
 
-//TODO: Give each thread an index into the array of simple paths, and have them check to see if "their" path is compatible.
+//TODO: There's some sketchiness going on with numPossiblePaths vs NUM_CONNECTIONS.
 int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd) {
     int numDisjoint = 0;
+    int numConf = 0;
     //First pass checks to see which simple paths are disjoint from the primary path.
-    for(int i = 0; i < numPossiblePaths; ++i) {
-
+    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
+      if(p[i].hops <= 0 || p[i].index < 0|| p[pInd].hops <= 0 || p[pInd].index < 0){numConf++; continue;}
         bool disjoint = true;
         //Check each edge to make sure they're disjoint
         for(int e1 = 0; disjoint && e1 <= p[pInd].index; ++e1) {
             for(int e2 = 0; disjoint && e2 <= p[i].index; ++e2) {
-                if(p[i].edges[e2] == p[pInd].edges[e1]) {
+                if(p[i].edgeNums[e2] == p[pInd].edgeNums[e1]) {
                     disjoint = false;
+		    numConf++;
                 }
             }
         }
@@ -728,6 +798,7 @@ int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int
                 ps[index][currentPath+1].index = ps[index][currentPath].index-1;
                 for(int i = 0; i < ps[index][currentPath].index; ++i) {
                     ps[index][currentPath+1].edges[i] = ps[index][currentPath].edges[i];
+		    ps[index][currentPath+1].edgeNums[i] = ps[index][currentPath].edgeNums[i];
                 }
 
                 currentPath += 1;
@@ -743,6 +814,7 @@ int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int
             if(!visited[neighbor]) {
 
                 ps[index][currentPath].edges[ps[index][currentPath].index] = &edgeList[edgeListIndex[currentNode]];
+		ps[index][currentPath].edgeNums[ps[index][currentPath].index] = edgeList[edgeListIndex[currentNode]].edgeNum;
                 ps[index][currentPath].index += 1;
 
                 st.push(neighbor);
@@ -769,6 +841,8 @@ int computeAllSimplePathsN(SimplePath **ps, int *vertexList, Edge *edgeList, int
         }
 
     }
+    //Last path is invalid
+    ps[index][currentPath].hops = 0;
     return currentPath;
 }
 
