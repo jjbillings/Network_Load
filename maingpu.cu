@@ -104,16 +104,13 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
 
   int primIndex = ps[p_ind].index;
   int backIndex = ps[b_ind].index;
+
+  int primHops = ps[p_ind].hops;
+  int backHops = ps[b_ind].hops;
   
-  //if(blockIdx.x == 85) {
-    //printf("b_ind: %d, p_ind: %d, output_ind: %d, P_Index: %d, B_Index: %d, PS: %d, PD: %d, BS: %d, BD: %d\n",b_ind,p_ind, output_ind,ps[p_ind].index,ps[b_ind].index,ps[p_ind].sourceNode,ps[p_ind].destNode,ps[b_ind].sourceNode,ps[b_ind].destNode); 
-    //}
-  
-  if(ps[p_ind].hops > 0 && ps[b_ind].hops > 0) {//Unnecessary? the for loop just wouldn't execute...
-    // printf("Block: %d, Thread: %d, p_ind: %d, p_Hops: %d, b_ind: %d, b_Hops: %d\n",blockIdx.x,threadIdx.x,p_ind,ps[p_ind].hops,b_ind,ps[b_ind].hops);
+  if(primHops > 0 && backHops > 0) {
     bool disjoint = true;
 
-    //printf("SP: %d, DP: %d, SP: %d, SB: %d\n",ps[p_ind].sourceNode,ps[p_ind].destNode,ps[b_ind].sourceNode,ps[b_ind].destNode);
     for(int e1 = 0; disjoint && e1 <= primIndex; ++e1) {
       for(int e2 = 0; disjoint && e2 <= backIndex; ++e2){
 	if(ps[p_ind].edgeNums[e1] == ps[b_ind].edgeNums[e2]) {
@@ -128,7 +125,7 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
     }
   }else {
     potPathCosts[output_ind] = -1;
-   }
+  }
 }
 
 /*
@@ -219,27 +216,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
     }
 
-    cudaMemcpy(h_potPathCosts,d_potPathCosts,(d_array_size*sizeof(int)),cudaMemcpyDeviceToHost);
-
-    //THIS IS PURELY FOR TESTING PURPOSES
-    int numCompat = 0;
-    int numIncompat = 0;
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-      for(int j = 0; j < NUM_CONNECTIONS; ++j) {
-	int ind = (i*NUM_CONNECTIONS)+j;
-	if(h_potPathCosts[ind] == 1) {
-	    numCompat++;
-	    //cout << "index: " << ind << " COST: " << h_potPathCosts[ind] << "\n";
-	}
-	if(h_potPathCosts[ind] == -1) {
-	  numIncompat++;
-	}
-      }
-      //cout << "GPU_" << i << ": " << numCompat << "\n";
-    }
-    cout << "NUM_COMPAT_GPU: " << numCompat << "\n";
-    cout << "NUM_INCOMPAT_GPU: " << numIncompat << "\n";
-    
+    cudaMemcpy(h_potPathCosts,d_potPathCosts,(d_array_size*sizeof(int)),cudaMemcpyDeviceToHost);    
     
     int numPossiblePaths = npaths[index];
 
@@ -252,19 +229,13 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
 
     //--------------Find all paths which are edge-disjoint from this primary--------------//
-    int numCompatCPU = 0;
-    int numIncompatCPU = 0;
     int k = 0;
     //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
         k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
 	
-	  numCompatCPU += k;
-	
-	  //cout << "Number of paths which are disjoint from this primary path_" << i << ": " << numCompatCPU << "\n";
     }
-
-    cout << "NUM_COMPAT_CPU: " << numCompatCPU << "\n";
+    
 
     //--------------Compute Cost for each backup path--------------//
     int ** pathCosts = new int*[numPossiblePaths];
