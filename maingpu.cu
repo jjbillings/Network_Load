@@ -159,6 +159,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
     const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array of SimplePaths
 
+    const size_t channels_size = ((2*N_EDGES)*MAX_CHANNELS)*sizeof(Channel);
+    
     //Test Data
     int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
     int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
@@ -170,6 +172,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
     int *h_potPathCosts; //Host pointer for the array of potential path costs.
 
+    Channel *d_channels; //Device pointer for the array of channels.
+    
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
     }
@@ -180,8 +184,16 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     }
     cout << "allocated SimplePaths array on Device\n";
 
+    if(cudaSuccess != cudaMalloc((void **)&d_channels,channels_size)) {
+	cout << "Error Allocating channels on GPU\n";
+    }else {
+	cout << "Allocated Channels array on GPU\n";
+    }
+
+    
+
     cudaMalloc((void **)&d_potPathCosts,d_array_size*sizeof(int));
-    cout << "allocated potential Path Costs array on device\n";
+    cout << "Allocated potential Path Costs array on device\n";
 
     h_potPathCosts = (int *)malloc(d_array_size*sizeof(int));
 
@@ -372,7 +384,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     cudaFree(d_ps);
     cudaFree(d_potPathCosts);
-
+      cudaFree(d_channels);
+    
     free(h_potPathCosts);
     cout << "ps array freed from device\n";
 
