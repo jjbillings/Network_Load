@@ -96,6 +96,19 @@ Connection cons[NUM_CONNECTIONS];
 Channel channels[2*N_EDGES][MAX_CHANNELS];
 
 
+__global__ void test(Channel *c) {
+  bool anyy = false;
+  for(int i = 0; i < (2*N_EDGES)*MAX_CHANNELS;++i) {
+    if(c[i].numBackups != 0) {
+      printf("FOUND ONE at index: %d\n",i);
+      anyy = true;
+    }
+  }
+  if(!anyy) {
+    printf("sucks\n");
+  }
+}
+
 //-----------Kernel for Determining which Backups are compatible with which Primaries. WORKING---------//
 __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
  
@@ -190,7 +203,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	cout << "Allocated Channels array on GPU\n";
     }
 
-    
+    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
     cudaMalloc((void **)&d_potPathCosts,d_array_size*sizeof(int));
     cout << "Allocated potential Path Costs array on device\n";
@@ -216,8 +229,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
 
     //Attempt to allocate SOME connection onto the network
-    int s = 2;
-    int d = 9;
+    int s = 0;
+    int d = 6;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -346,6 +359,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //Increase the network load
     increaseLoad(&cons[connectionNum],channels);
 
+    //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
+    cudaMemcpy(d_channels,&channels,((2*N_EDGES)*MAX_CHANNELS*sizeof(Channel)),cudaMemcpyHostToDevice);
 
     //--------------Print Network Load--------------//
     for(int m = 0; m < 2*N_EDGES; ++m) {
@@ -361,7 +376,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
         cout << "\n";
 
     }
-
+    
 
     //--------------Clean up memory--------------//
     for(int i = 0; i < numPossiblePaths; ++i) {
