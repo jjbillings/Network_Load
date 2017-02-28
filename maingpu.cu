@@ -153,6 +153,12 @@ int main(int argc, char** argv) {
 }
 
 void simulate_GPU(int *vertexList, Edge *edgeList){
+
+    clock_t cpu_startTime, cpu_endTime;
+    double cpu_elapsedTime = 0;
+    float gpu_totalTime = 0;
+    cpu_startTime = clock();
+    
     int connectionNum = 0;
     const size_t sp_size = sizeof(SimplePath);
     const size_t potPathCosts_size = (NUM_CONNECTIONS * NUM_CONNECTIONS) * sizeof(int);
@@ -220,7 +226,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEvent_t start, stop;
     
 
-    for(int c = 0; c < 1; ++c) {
+    for(int c = 0; c < 10; ++c) {
     //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
       int d = v2[connectionNum];
@@ -242,13 +248,14 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     //-----------Launch the Kernel-------------//
     determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
+    //cudaDeviceSynchronize();
 
     //BENCHMARKING
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float milli = 0;
     cudaEventElapsedTime(&milli,start,stop);
-
+    gpu_totalTime += milli;
     cout << "Kernel Execution took: " << milli << " milliseconds\n";
 
     cudaEventDestroy(start);
@@ -428,7 +435,12 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     free(h_potPathCosts);
     cout << "Arrays free'd from device\n";
+    cpu_endTime = clock();
+    cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
 
+        cout << "Kernel Execution took: " << gpu_totalTime << " milliseconds\n";
+	cout << "Total time: " << cpu_elapsedTime << " milliseconds\n";
+	cout << "CPU Start: " << cpu_startTime << " CPU End: " << cpu_endTime << "\n";
 }
 
 
