@@ -220,10 +220,10 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEvent_t start, stop;
     
 
-    for(int c = 0; c < 15; ++c) {
+    for(int c = 0; c < 1; ++c) {
     //Attempt to allocate SOME connection onto the network
-    int s = 0;
-    int d = 0;
+    int s = 1;
+    int d = 8;
     while(s == d) {
       s = rand()%N_NODES;
       d = rand()%N_NODES;
@@ -291,6 +291,9 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     for(int i = 0; i <= ps[index][minBackIndGPU].index; ++i) {
       cout << (*ps[index][minBackIndGPU].edges[i]).v1 << " -> " << (*ps[index][minBackIndGPU].edges[i]).v2 << "\n";
     }
+
+
+    /*
     int numPossiblePaths = npaths[index];
 
     //Stores indices into the ps[index][] array for each disjoint backup path.
@@ -323,6 +326,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
 
     //--------------Select cheapest connection--------------//
+    
     int minCost = 100000000;
     int minPrimInd = -1;
     int minBackInd = -1;
@@ -341,29 +345,33 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
         }
     }
     cout << "Min cost on CPU is: " << minCost << "\n";
-
-
+    cout << "minPrimInd: " << minPrimInd << "\n";
+    cout << "minBackInd: " << potPathInd[minPrimInd][minBackInd] << "\n";
+    */
+    
+    //cout << "minPrimIndGPU: " << minPrimIndGPU << "\n";
+    //cout << "minBackIndGPU: " << minBackIndGPU << "\n";
 
     //--------------Store the connection--------------//
     cons[connectionNum].sourceNode = s;
     cons[connectionNum].destNode = d;
-    cons[connectionNum].combinedCost = minCost;
+    cons[connectionNum].combinedCost = minCostGPU;
     cons[connectionNum].validBackup = true;
     cons[connectionNum].validPrimary = true;
     cons[connectionNum].backupPath = new Path();
     cons[connectionNum].primaryPath = new Path();
-    (*cons[connectionNum].primaryPath).hops = ps[index][minPrimInd].hops;
-    (*cons[connectionNum].primaryPath).index = ps[index][minPrimInd].index;
+    (*cons[connectionNum].primaryPath).hops = ps[index][minPrimIndGPU].hops;
+    (*cons[connectionNum].primaryPath).index = ps[index][minPrimIndGPU].index;
     (*cons[connectionNum].primaryPath).primary = true;
-    (*cons[connectionNum].backupPath).hops = ps[index][potPathInd[minPrimInd][minBackInd]].hops;
-    (*cons[connectionNum].backupPath).index = ps[index][potPathInd[minPrimInd][minBackInd]].index;
+    (*cons[connectionNum].backupPath).hops = ps[index][minBackIndGPU].hops;
+    (*cons[connectionNum].backupPath).index = ps[index][minBackIndGPU].index;
 
-    for(int p = 0; p <= ps[index][minPrimInd].index; ++p) {
-        (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimInd].edges[p];
+    for(int p = 0; p <= ps[index][minPrimIndGPU].index; ++p) {
+        (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimIndGPU].edges[p];
         (*cons[connectionNum].primaryPath).freeEdges[p] = false;
     }
-    for(int p = 0; p <= ps[index][potPathInd[minPrimInd][minBackInd]].index; ++p) {
-        (*cons[connectionNum].backupPath).edges[p] = ps[index][potPathInd[minPrimInd][minBackInd]].edges[p];
+    for(int p = 0; p <= ps[index][minBackIndGPU].index; ++p) {
+        (*cons[connectionNum].backupPath).edges[p] = ps[index][minBackIndGPU].edges[p];
     }
 
     //Select Channels
@@ -392,6 +400,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
 
     //--------------Clean up memory--------------//
+    /*
     for(int i = 0; i < numPossiblePaths; ++i) {
         delete[] potPathInd[i];
     }
@@ -401,6 +410,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
         delete[] pathCosts[i];
     }
     delete[] pathCosts;
+    */
     connectionNum++;
     }//ENDFOR
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
@@ -708,6 +718,7 @@ void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNE
 //I wanted to modularize the code as much as possible this time around, which is why there's so much redundancy in this method.
 void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
 
+  /*
     cout << "prim\n";
     for(int i = 0; i <= (*(*c).primaryPath).index; ++i) {
         cout << (*(*(*c).primaryPath).edges[i]).v1 << " -> " << (*(*(*c).primaryPath).edges[i]).v2 << "\n";
@@ -717,6 +728,7 @@ void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
         cout << (*(*(*c).backupPath).edges[i]).v1 << " -> " << (*(*(*c).backupPath).edges[i]).v2 << "\n";
     }
 
+  */
     int edgeNum = -1;
     //Select Primary path channels;
     for(int p = 0; p <= (*(*c).primaryPath).index; ++p){
