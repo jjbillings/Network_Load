@@ -96,6 +96,19 @@ Connection cons[NUM_CONNECTIONS];
 Channel channels[2*N_EDGES][MAX_CHANNELS];
 
 
+__global__ void test(Channel *c) {
+  bool anyy = false;
+  for(int i = 0; i < (2*N_EDGES)*MAX_CHANNELS;++i) {
+    if(c[i].numBackups != 0) {
+      printf("FOUND ONE at index: %d\n",i);
+      anyy = true;
+    }
+  }
+  if(!anyy) {
+    printf("sucks\n");
+  }
+}
+
 //-----------Kernel for Determining which Backups are compatible with which Primaries. WORKING---------//
 __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
  
@@ -154,32 +167,30 @@ int main(int argc, char** argv) {
 
 void simulate_GPU(int *vertexList, Edge *edgeList){
     int connectionNum = 0;
-    
     const size_t sp_size = sizeof(SimplePath);
-    const size_t potPathCosts_size = (NUM_CONNECTIONS * NUM_CONNECTIONS) * sizeof(int);
+    const size_t d_array_size = (NUM_CONNECTIONS * NUM_CONNECTIONS);
     const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
     const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array of SimplePaths
+
     const size_t channels_size = ((2*N_EDGES)*MAX_CHANNELS)*sizeof(Channel);
     
     //Test Data
     int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
     int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
-
-    //Host Pointers
-    SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
-    int *npaths = new int[N_NODES*N_NODES];//TODO: This should be deprecated soon.
-    int *h_potPathCosts; //Host pointer for the array of potential path costs.
     
-    //Device pointers
+    SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
+    int *npaths = new int[N_NODES*N_NODES];
+
     SimplePath *d_ps; //Device pointer for the array of SimplePaths
     int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
+    int *h_potPathCosts; //Host pointer for the array of potential path costs.
+
     Channel *d_channels; //Device pointer for the array of channels.
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
     }
-    
-    h_potPathCosts = (int *)malloc(potPathCosts_size);
+
 
     if(cudaSuccess != cudaMalloc((void **)&d_ps,ps_size)) {
     	cout << "Malloc Error\n";
@@ -192,14 +203,12 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	cout << "Allocated Channels array on GPU\n";
     }
 
-    cudaMalloc((void **)&d_potPathCosts,potPathCosts_size);
+    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
+
+    cudaMalloc((void **)&d_potPathCosts,d_array_size*sizeof(int));
     cout << "Allocated potential Path Costs array on device\n";
 
-    //cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
-
-    
-
-    
+    h_potPathCosts = (int *)malloc(d_array_size*sizeof(int));
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
     for(int src = 0; src < N_NODES; ++src) {
@@ -234,7 +243,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
     }
 
-    cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);    
+    cudaMemcpy(h_potPathCosts,d_potPathCosts,(d_array_size*sizeof(int)),cudaMemcpyDeviceToHost);    
 
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
       computeCostForBackupsWithGPU(ps[index],h_potPathCosts,i,channels);
@@ -245,6 +254,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int minBackIndGPU = -1;
 
     for(int p = 0; p < NUM_CONNECTIONS; ++p) {
+        int backIndGPU = 0;
         int primaryCostGPU = ps[index][p].hops;
 
         for(int b = 0; b < NUM_CONNECTIONS; ++b) {
