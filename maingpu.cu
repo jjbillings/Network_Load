@@ -96,18 +96,6 @@ Connection cons[NUM_CONNECTIONS];
 Channel channels[2*N_EDGES][MAX_CHANNELS];
 
 
-__global__ void test(Channel *c) {
-  bool anyy = false;
-  for(int i = 0; i < (2*N_EDGES)*MAX_CHANNELS;++i) {
-    if(c[i].numBackups != 0) {
-      printf("FOUND ONE at index: %d\n",i);
-      anyy = true;
-    }
-  }
-  if(!anyy) {
-    printf("sucks\n");
-  }
-}
 
 //-----------Kernel for Determining which Backups are compatible with which Primaries. WORKING---------//
 __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int conInd){
@@ -115,7 +103,6 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
   int p_ind = (conInd * NUM_CONNECTIONS) +  blockIdx.x;
   int b_ind = (conInd * NUM_CONNECTIONS) +  threadIdx.x;
   int output_ind = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
-
 
   int primIndex = ps[p_ind].index;
   int backIndex = ps[b_ind].index;
@@ -168,7 +155,7 @@ int main(int argc, char** argv) {
 void simulate_GPU(int *vertexList, Edge *edgeList){
     int connectionNum = 0;
     const size_t sp_size = sizeof(SimplePath);
-    const size_t d_array_size = (NUM_CONNECTIONS * NUM_CONNECTIONS);
+    const size_t potPathCosts_size = (NUM_CONNECTIONS * NUM_CONNECTIONS) * sizeof(int);
     const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
     const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array of SimplePaths
 
@@ -194,8 +181,9 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     if(cudaSuccess != cudaMalloc((void **)&d_ps,ps_size)) {
     	cout << "Malloc Error\n";
+    }else {
+      cout << "allocated SimplePaths array on Device\n";
     }
-    cout << "allocated SimplePaths array on Device\n";
 
     if(cudaSuccess != cudaMalloc((void **)&d_channels,channels_size)) {
 	cout << "Error Allocating channels on GPU\n";
@@ -203,12 +191,13 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	cout << "Allocated Channels array on GPU\n";
     }
 
-    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
-
-    cudaMalloc((void **)&d_potPathCosts,d_array_size*sizeof(int));
+    cudaMalloc((void **)&d_potPathCosts,potPathCosts_size);
     cout << "Allocated potential Path Costs array on device\n";
 
-    h_potPathCosts = (int *)malloc(d_array_size*sizeof(int));
+    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
+
+    
+    h_potPathCosts = (int *)malloc(potPathCosts_size);
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
     for(int src = 0; src < N_NODES; ++src) {
@@ -230,7 +219,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     //Attempt to allocate SOME connection onto the network
     int s = 0;
-    int d = 6;
+    int d = 9;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -243,18 +232,18 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
     }
 
-    cudaMemcpy(h_potPathCosts,d_potPathCosts,(d_array_size*sizeof(int)),cudaMemcpyDeviceToHost);    
+    cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);    
 
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
       computeCostForBackupsWithGPU(ps[index],h_potPathCosts,i,channels);
     }
 
+    //-----------Select the cheapest combo using GPU Results-----------//
     int minCostGPU = 100000000;
     int minPrimIndGPU = -1;
     int minBackIndGPU = -1;
 
     for(int p = 0; p < NUM_CONNECTIONS; ++p) {
-        int backIndGPU = 0;
         int primaryCostGPU = ps[index][p].hops;
 
         for(int b = 0; b < NUM_CONNECTIONS; ++b) {
@@ -360,7 +349,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     increaseLoad(&cons[connectionNum],channels);
 
     //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
-    cudaMemcpy(d_channels,&channels,((2*N_EDGES)*MAX_CHANNELS*sizeof(Channel)),cudaMemcpyHostToDevice);
+    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
     //--------------Print Network Load--------------//
     for(int m = 0; m < 2*N_EDGES; ++m) {
@@ -399,10 +388,10 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     cudaFree(d_ps);
     cudaFree(d_potPathCosts);
-      cudaFree(d_channels);
+    cudaFree(d_channels);
     
     free(h_potPathCosts);
-    cout << "ps array freed from device\n";
+    cout << "Arrays free'd from device\n";
 
 }
 
