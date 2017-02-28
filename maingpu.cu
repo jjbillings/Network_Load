@@ -222,12 +222,14 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     for(int c = 0; c < 1; ++c) {
     //Attempt to allocate SOME connection onto the network
-    int s = 1;
-    int d = 8;
-    while(s == d) {
-      s = rand()%N_NODES;
-      d = rand()%N_NODES;
-    }
+      int s = v1[connectionNum];
+      int d = v2[connectionNum];
+    //int s = 1;
+    //int d = 8;
+    // while(s == d) {
+    //  s = rand()%N_NODES;
+    //  d = rand()%N_NODES;
+    //}
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
