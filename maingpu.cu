@@ -149,6 +149,7 @@ int main(int argc, char** argv) {
     srand(time(NULL));
 
     simulate_GPU(vertexList,edgeList);
+    //simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -226,7 +227,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEvent_t start, stop;
     
 
-    for(int c = 0; c < 10; ++c) {
+    for(int c = 0; c < 22; ++c) {
     //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
       int d = v2[connectionNum];
@@ -529,7 +530,15 @@ void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryI
 
 
 void simulate(int *vertexList, Edge *edgeList){
-    int connectionNum = 0;
+    clock_t cpu_startTime, cpu_endTime;
+    double cpu_elapsedTime = 0;
+    cpu_startTime = clock();
+
+    //Test Data
+    int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
+    int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
+    
+  int connectionNum = 0;
     //We want to compute and store all possible paths between our source and desitination.
     SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
     int *npaths = new int[N_NODES*N_NODES];
@@ -554,16 +563,16 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "all simple paths computed!\n";
 
 
-    for(int num = 0; num < 45; ++num) {
+    for(int num = 0; num < 22; ++num) {
     //Attempt to allocate SOME connection onto the network
-    //int s = 0;
-    //int d = 9;
-    int s = rand() % N_NODES;
-    int d = rand() % N_NODES;
-    while(s == d) {
-        s = rand()%N_NODES;
-        d = rand()%N_NODES;
-    }
+    int s = v1[connectionNum];
+    int d = v2[connectionNum];
+    //int s = rand() % N_NODES;
+    //int d = rand() % N_NODES;
+    //while(s == d) {
+    //    s = rand()%N_NODES;
+    //    d = rand()%N_NODES;
+    //}
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -685,6 +694,10 @@ void simulate(int *vertexList, Edge *edgeList){
     delete[] ps;
     delete[] npaths;
     cout << "ps and npaths deleted\n";
+
+    cpu_endTime = clock();
+    cpu_elapsedTime = ((double)(cpu_endTime-cpu_startTime)/CLOCKS_PER_SEC)*1000;
+    cout << "CPU Total Elapsed Time: " << cpu_elapsedTime << "\n";
 }
 
 void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]) {
