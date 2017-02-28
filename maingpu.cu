@@ -218,13 +218,19 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     //Setup components for GPU benchmarking.
     cudaEvent_t start, stop;
+    
+
+    for(int c = 0; c < 15; ++c) {
+    //Attempt to allocate SOME connection onto the network
+    int s = 0;
+    int d = 0;
+    while(s == d) {
+      s = rand()%N_NODES;
+      d = rand()%N_NODES;
+    }
+
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-
-
-    //Attempt to allocate SOME connection onto the network
-    int s = 2;
-    int d = 4;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -242,6 +248,9 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEventElapsedTime(&milli,start,stop);
 
     cout << "Kernel Execution took: " << milli << " milliseconds\n";
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     
     if(cudaSuccess != cudaGetLastError()) {
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
@@ -393,7 +402,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     }
     delete[] pathCosts;
     connectionNum++;
-
+    }//ENDFOR
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         delete[] ps[i];
     }
