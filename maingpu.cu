@@ -216,18 +216,33 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cudaMemcpy(d_ps + (i*(NUM_CONNECTIONS)),ps[i],row_size,cudaMemcpyHostToDevice);
     }
 
+    //Setup components for GPU benchmarking.
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
 
     //Attempt to allocate SOME connection onto the network
-    int s = 0;
-    int d = 9;
+    int s = 2;
+    int d = 4;
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
-    
 
+    //BENCHMARKING
+    cudaEventRecord(start);
+    
     //-----------Launch the Kernel-------------//
     determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
 
+    //BENCHMARKING
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milli = 0;
+    cudaEventElapsedTime(&milli,start,stop);
+
+    cout << "Kernel Execution took: " << milli << " milliseconds\n";
+    
     if(cudaSuccess != cudaGetLastError()) {
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
     }
