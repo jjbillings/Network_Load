@@ -160,8 +160,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    simulate_GPU(vertexList,edgeList);
-    //simulate(vertexList,edgeList);
+    //simulate_GPU(vertexList,edgeList);
+    simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -482,7 +482,7 @@ void simulate(int *vertexList, Edge *edgeList){
     int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
     int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
     
-  int connectionNum = 0;
+    int connectionNum = 0;
     //We want to compute and store all possible paths between our source and desitination.
     SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
     int *npaths = new int[N_NODES*N_NODES];
@@ -491,9 +491,6 @@ void simulate(int *vertexList, Edge *edgeList){
         ps[i] = new SimplePath[NUM_CONNECTIONS];
     }
 
-    //Need to initialize simplepaths with default values.
-
-    cout <<"ps created\n";
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
     for(int src = 0; src < N_NODES; ++src) {
@@ -501,15 +498,13 @@ void simulate(int *vertexList, Edge *edgeList){
             if(src != dest) {
                 int index = (src*N_NODES)+dest;
                 npaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
-                cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
+                //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
             }
         }
     }
     //At this point, we COULD delete[] any paths in the array that we didn't use.
-    cout << "all simple paths computed!\n";
 
 
-    //cpu_startTime = clock();
     for(int num = 0; num < 40; ++num) {
     //Attempt to allocate SOME connection onto the network
     int s = v1[connectionNum];
