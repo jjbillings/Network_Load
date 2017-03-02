@@ -160,8 +160,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    //simulate_GPU(vertexList,edgeList);
-    simulate(vertexList,edgeList);
+    simulate_GPU(vertexList,edgeList);
+    //simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -191,7 +191,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
     int *h_potPathCosts; //Host pointer for the array of potential path costs.
 
-    Channel *d_channels; //Device pointer for the array of channels.
+    //Channel *d_channels; //Device pointer for the array of channels.
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
@@ -204,16 +204,18 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "allocated SimplePaths array on Device\n";
     }
 
+    /*
     if(cudaSuccess != cudaMalloc((void **)&d_channels,channels_size)) {
 	cout << "Error Allocating channels on GPU\n";
     }else {
 	cout << "Allocated Channels array on GPU\n";
     }
+    */
 
     cudaMalloc((void **)&d_potPathCosts,potPathCosts_size);
     cout << "Allocated potential Path Costs array on device\n";
 
-    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
     
     h_potPathCosts = (int *)malloc(potPathCosts_size);
@@ -240,17 +242,11 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
 
     //cpu_startTime = clock();
-    for(int c = 0; c < 22; ++c) {
+    for(int c = 0; c < 40; ++c) {
       
       //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
       int d = v2[connectionNum];
-    //int s = 1;
-    //int d = 8;
-    // while(s == d) {
-    //  s = rand()%N_NODES;
-    //  d = rand()%N_NODES;
-    //}
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -258,12 +254,13 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
 
+    
     //BENCHMARKING
     cudaEventRecord(start);
     
     //-----------Launch the Kernel-------------//
     determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
-    cudaDeviceSynchronize();
+    //    cudaDeviceSynchronize();
 
     //BENCHMARKING
     cudaEventRecord(stop);
@@ -271,10 +268,11 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     float milli = 0;
     cudaEventElapsedTime(&milli,start,stop);
     gpu_totalTime += milli;
-    cout << "Kernel Execution took: " << milli << " milliseconds\n";
+    //cout << "Kernel Execution took: " << milli << " milliseconds\n";
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
+
     
     if(cudaSuccess != cudaGetLastError()) {
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
@@ -306,6 +304,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
             }
         }
     }
+
     cout << "Min cost on GPU is: " << minCostGPU << "\n";
     cout << "PRIM: "<<minPrimIndGPU << "\n";
     for(int i = 0; i <= ps[index][minPrimIndGPU].index; ++i) {
@@ -316,65 +315,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << (*ps[index][minBackIndGPU].edges[i]).v1 << " -> " << (*ps[index][minBackIndGPU].edges[i]).v2 << "\n";
     }
 
-
-    /*
-    int numPossiblePaths = npaths[index];
-
-    //Stores indices into the ps[index][] array for each disjoint backup path.
-    //potPathInd[i][j] = k where ps[index][k] is a path that is edge-disjoint from ps[index][i].
-    int ** potPathInd = new int*[NUM_CONNECTIONS];
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-        potPathInd[i] = new int[NUM_CONNECTIONS];
-    }
-
-
-    //--------------Find all paths which are edge-disjoint from this primary--------------//
-    int k = 0;
-    //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-        k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
-	
-    }
-    
-
-    //--------------Compute Cost for each backup path--------------//
-    int ** pathCosts = new int*[numPossiblePaths];
-    for(int i = 0; i < numPossiblePaths; ++i) {
-        pathCosts[i] = new int[numPossiblePaths];
-    }
-
-    for(int i = 0; i < numPossiblePaths; ++i) {
-        computeCostForBackups(ps[index],potPathInd[i],numPossiblePaths,i,pathCosts[i],channels);
-    }
-
-
-
-    //--------------Select cheapest connection--------------//
-    
-    int minCost = 100000000;
-    int minPrimInd = -1;
-    int minBackInd = -1;
-
-    for(int p = 0; p < numPossiblePaths; ++p) {
-        int backInd = 0;
-        int primaryCost = ps[index][p].hops;
-
-        while(pathCosts[p][backInd] != -1) {
-            if((pathCosts[p][backInd] + primaryCost) < minCost) {
-                minCost = (pathCosts[p][backInd] + primaryCost);
-                minPrimInd = p;
-                minBackInd = backInd;
-            }
-            backInd++;
-        }
-    }
-    cout << "Min cost on CPU is: " << minCost << "\n";
-    cout << "minPrimInd: " << minPrimInd << "\n";
-    cout << "minBackInd: " << potPathInd[minPrimInd][minBackInd] << "\n";
-    */
-    
-    //cout << "minPrimIndGPU: " << minPrimIndGPU << "\n";
-    //cout << "minBackIndGPU: " << minBackIndGPU << "\n";
 
     //--------------Store the connection--------------//
     cons[connectionNum].sourceNode = s;
@@ -405,7 +345,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     increaseLoad(&cons[connectionNum],channels);
 
     //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
-    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
     //--------------Print Network Load--------------//
     for(int m = 0; m < 2*N_EDGES; ++m) {
@@ -423,36 +363,25 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     }
     
 
-    //--------------Clean up memory--------------//
-    /*
-    for(int i = 0; i < numPossiblePaths; ++i) {
-        delete[] potPathInd[i];
-    }
-    delete[] potPathInd;
-
-    for(int i = 0; i < numPossiblePaths; ++i) {
-        delete[] pathCosts[i];
-    }
-    delete[] pathCosts;
-    */
     connectionNum++;
     }//ENDFOR
 
+    cudaDeviceSynchronize();
     cpu_endTime = clock();
-    
+
+
+    //--------------Clean up memory--------------//
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         delete[] ps[i];
     }
     delete[] ps;
     delete[] npaths;
-    cout << "ps and npaths deleted\n";
     
     cudaFree(d_ps);
     cudaFree(d_potPathCosts);
-    cudaFree(d_channels);
+    //cudaFree(d_channels);
     
     free(h_potPathCosts);
-    cout << "Arrays free'd from device\n";
     //cpu_endTime = clock();
     cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
 
