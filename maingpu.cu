@@ -185,7 +185,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int v2[40] = {3, 8, 4, 3, 8, 3, 7, 1, 5, 6, 0, 6, 10, 5, 8, 2, 3, 6, 5, 4, 2, 3, 9, 7, 9, 5, 6, 5, 0, 2, 5, 5, 10, 3, 9, 3, 4, 1, 10, 2};
     
     SimplePath **ps = new SimplePath*[N_NODES * N_NODES]; //Storage for paths
-    int *npaths = new int[N_NODES*N_NODES];
 
     SimplePath *d_ps; //Device pointer for the array of SimplePaths
     int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
@@ -225,7 +224,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
         for(int dest = 0; dest < N_NODES; ++dest) {
             if(src != dest) {
                 int index = (src*N_NODES)+dest;
-                npaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
+                computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
                 //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
             }
         }
@@ -375,7 +374,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
         delete[] ps[i];
     }
     delete[] ps;
-    delete[] npaths;
     
     cudaFree(d_ps);
     cudaFree(d_potPathCosts);
