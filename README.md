@@ -2,7 +2,7 @@
 C++ app to simulate the load on an optical network.
 ###To-Do:
 - [x] 1. Rall Symposium Abstract 
-- [ ] 2. Phase 0.5
+- [x] 2. Phase 0.5
 	- [x] * Finish CPU implementation
 		- [x] * Compute all simple paths of length N between all pairs of vertices
 		- [x] * Store results in memory
@@ -10,7 +10,7 @@ C++ app to simulate the load on an optical network.
 		- [x] * For each primary path, compute cost of backup path using stored simple paths/channels/load
 		- [x] * Select cheapest primary/backup combo
 		- [x] * Increase Network Load
-	- [ ] * Measure CPU running time
+	- [x] * Measure CPU running time
 	- [ ] * **This needs to be done for Rall.**
 - [ ] 3. Phase 1
 	- [x] * Develop technique for splitting up work accross cores
@@ -26,7 +26,7 @@ C++ app to simulate the load on an optical network.
 			- [ ] * Copy channels array to the GPU
 			- [ ] * Determine cost per primary/backup combo
 			- [ ] * Copy results back to Host
-	- [ ] * Measure GPU running time
+	- [x] * Measure GPU running time
 - [ ] 4. Phase 2
 	- [ ] * Compare CPU/GPU running time
 	- [ ] * **If we have this for Rall, that would be dope.**
