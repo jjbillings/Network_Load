@@ -160,8 +160,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    //simulate_GPU(vertexList,edgeList);
-    simulate(vertexList,edgeList);
+    simulate_GPU(vertexList,edgeList);
+    //simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -295,12 +295,12 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	  int f = (p*NUM_CONNECTIONS)+b;
 	  if(h_potPathCosts[(p*NUM_CONNECTIONS)+b] < 0) {
 	      continue;
-	    }
-            if((h_potPathCosts[(p*NUM_CONNECTIONS)+b] + primaryCostGPU) < minCostGPU) {
+	  }
+          if((h_potPathCosts[(p*NUM_CONNECTIONS)+b] + primaryCostGPU) < minCostGPU) {
                 minCostGPU = (h_potPathCosts[(p*NUM_CONNECTIONS)+b] + primaryCostGPU);
                 minPrimIndGPU = p;
                 minBackIndGPU = b;
-            }
+          }
         }
     }
 
@@ -533,7 +533,7 @@ void simulate(int *vertexList, Edge *edgeList){
     //On the GPU, instead of iterating i..numPossiblePaths, we would give thread_i backup_i
     for(int i = 0; i < numPossiblePaths; ++i) {
         k = determineCompatibleBackups(ps[index],potPathInd[i],numPossiblePaths,i);
-        cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
+        //cout << "Number of paths which are disjoint from this primary path: " << k << "\n";
     }
 
 
@@ -770,7 +770,7 @@ void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
             (*(*c).backupPath).channelNum[e] = firstOpenChannel;
         }
     }
-    cout << "all set?\n";
+    //cout << "all set?\n";
 }
 
 void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int primaryInd, int *pathCosts, Channel cs[2*N_EDGES][MAX_CHANNELS]) {
@@ -854,7 +854,7 @@ void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths,
 int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd) {
     int numDisjoint = 0;
     int numConf = 0;
-    cout << "SRC: " << p[pInd].sourceNode << " DEST: " << p[pInd].destNode << "\n";
+    //cout << "SRC: " << p[pInd].sourceNode << " DEST: " << p[pInd].destNode << "\n";
     //First pass checks to see which simple paths are disjoint from the primary path.
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
       if(p[i].hops <= 0 || p[i].index < 0|| p[pInd].hops <= 0 || p[pInd].index < 0){numConf++; continue;}
@@ -876,8 +876,8 @@ int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePa
     }
     //Mark the end of the array
     potPathInd[numDisjoint] = -1;
-    cout << "disjoint: " << numDisjoint << " out of " << numPossiblePaths <<"\n";
-    cout << "conflicts: " << numConf << "\n";
+    //cout << "disjoint: " << numDisjoint << " out of " << numPossiblePaths <<"\n";
+    //cout << "conflicts: " << numConf << "\n";
     return numDisjoint;
 }
 
