@@ -75,6 +75,7 @@ struct Path {
     Edge *edges[N_NODES];
     bool freeEdges[N_NODES]; //whether or not that edge has a cost of 0
     int channelNum[N_NODES]; //Channel number for each edge that it uses
+    int edgeNums[N_NODES];
     bool primary;
     bool active;
 };
@@ -139,6 +140,124 @@ __global__ void determineCompatibleBackups(SimplePath *ps, int *potPathCosts,int
   }else {
     potPathCosts[output_ind] = -1;
   }
+}
+
+//-----------TEST_KERNEL_FOR_WARPS---------//
+__global__ void determineCompatibleBackups2(SimplePath *ps, int *potPathCosts,int conInd){
+
+  int warp_id = threadIdx.x / 32;
+  int warp_offset = threadIdx.x % 32;
+  
+  int p_ind = (conInd * NUM_CONNECTIONS) +  blockIdx.x;
+  int b_ind = (conInd * NUM_CONNECTIONS) +  threadIdx.x;
+  int output_ind = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
+
+  int primIndex = ps[p_ind].index;
+  int backIndex = ps[b_ind].index;
+
+  int primHops = ps[p_ind].hops;
+  int backHops = ps[b_ind].hops;
+  
+  if(primHops > 0 && backHops > 0) {
+    bool disjoint = true;
+
+    for(int e1 = 0; disjoint && e1 <= primIndex; ++e1) {
+      for(int e2 = 0; disjoint && e2 <= backIndex; ++e2){
+	if(ps[p_ind].edgeNums[e1] == ps[b_ind].edgeNums[e2]) {
+	  disjoint = false;
+	}
+      }
+    }
+    if(disjoint) {
+      potPathCosts[output_ind] = 1;
+    }else {
+      potPathCosts[output_ind] = -1;
+    }
+  }else {
+    potPathCosts[output_ind] = -1;
+  }
+}
+
+__global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Channel *cs) {
+
+  int p_ind = (conInd * NUM_CONNECTIONS) + blockIdx.x;
+  int b_ind = (conInd * NUM_CONNECTIONS) + threadIdx.x;
+  int index = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
+
+  
+        if(potPathCosts[index] == -1) {
+	    return;
+        }
+        
+        int cost = 0;
+
+        for(int e = 0; e <= p[b_ind].index; ++e) {
+            bool free = false;
+            int edgeNum = p[b_ind].edgeNums[e];
+	    
+            int firstOpenChannel = MAX_CHANNELS+1;
+
+            for(int c = 0; !free && c < MAX_CHANNELS; ++c) {
+
+	        int channelIndex = (edgeNum * MAX_CHANNELS)+c;
+	        if(cs[channelIndex].primary == true) {
+                    continue;
+                }
+
+                //At this point, we know that there are no primary paths on this channel
+                //Thus we must check and see if it is "free".
+
+                //we COULD use this channel, but there may be a "free" one further down.
+                if(cs[channelIndex].numBackups == 0) {
+                    if(c < firstOpenChannel) {
+                        firstOpenChannel = c;
+                    }
+                    continue;
+                }
+
+                bool disjoint = true;
+
+                //Check every connection currently on protected on the channel
+                for(int bup = 0; disjoint && bup < cs[channelIndex].numBackups; ++bup) {
+
+                    //At this point, we know that there is at least one path protected on this channel.
+                    //Technically, we should also know that it's not a primary path.
+
+                    //for each edge of the protected connection's primary path
+                    for(int e2 = 0; disjoint && e2 <= (*(*cs[channelIndex].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+
+                        //see if its the same edge as used by our primary path.
+                        for(int e3 = 0; disjoint && e3 <= p[p_ind].index; ++e3 ) {
+
+                            if((*(*cs[channelIndex].backupsOnChannel[bup]).primaryPath).edgeNums[e2] == p[p_ind].edgeNums[e3]) {
+                                //There is a non-disjoint primary path on this channel, so it is unusable.
+
+                                disjoint = false;
+                            }
+                        }
+                    }
+                }
+
+                if(disjoint) {
+                    //This channel is free
+                    free = true;
+                }
+            }
+
+            if(!free) {
+                if(firstOpenChannel < MAX_CHANNELS) {
+                    cost++;
+                }else {
+                    cost = 1000000;
+                    break;
+                }
+
+            }
+
+        }
+
+        potPathCosts[b_ind] = cost;
+    
 }
 
 /*
@@ -332,9 +451,11 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     for(int p = 0; p <= ps[index][minPrimIndGPU].index; ++p) {
         (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimIndGPU].edges[p];
         (*cons[connectionNum].primaryPath).freeEdges[p] = false;
+	(*cons[connectionNum].primaryPath).edgeNums[p] = ps[index][minPrimIndGPU].edgeNums[p];
     }
     for(int p = 0; p <= ps[index][minBackIndGPU].index; ++p) {
         (*cons[connectionNum].backupPath).edges[p] = ps[index][minBackIndGPU].edges[p];
+	(*cons[connectionNum].backupPath).edgeNums[p] = ps[index][minBackIndGPU].edgeNums[p];
     }
 
     //Select Channels
