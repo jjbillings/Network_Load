@@ -184,7 +184,8 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
   int b_ind = (conInd * NUM_CONNECTIONS) + threadIdx.x;
   int index = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
 
-  
+
+  //If we already know that this combo is unusable, just quit.
         if(potPathCosts[index] == -1) {
 	    return;
         }
@@ -256,7 +257,7 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
 
         }
 
-        potPathCosts[b_ind] = cost;
+        potPathCosts[index] = cost;
     
 }
 
@@ -309,7 +310,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
     int *h_potPathCosts; //Host pointer for the array of potential path costs.
 
-    //Channel *d_channels; //Device pointer for the array of channels.
+    Channel *d_channels; //Device pointer for the array of channels.
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
@@ -322,18 +323,18 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "allocated SimplePaths array on Device\n";
     }
 
-    /*
+    
     if(cudaSuccess != cudaMalloc((void **)&d_channels,channels_size)) {
 	cout << "Error Allocating channels on GPU\n";
     }else {
 	cout << "Allocated Channels array on GPU\n";
     }
-    */
+    
 
     cudaMalloc((void **)&d_potPathCosts,potPathCosts_size);
     cout << "Allocated potential Path Costs array on device\n";
 
-    //cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
+    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
     
     h_potPathCosts = (int *)malloc(potPathCosts_size);
@@ -360,7 +361,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
 
     //cpu_startTime = clock();
-    for(int c = 0; c < 40; ++c) {
+    for(int c = 0; c < 1; ++c) {
       
       //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
@@ -396,11 +397,15 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
     }
 
+    //---------Launch the Kernel----------//
+    costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
+    
+    //---------Copy the Results back to the host ---//
     cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);    
 
-    for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-      computeCostForBackupsWithGPU(ps[index],h_potPathCosts,i,channels);
-    }
+    //for(int i = 0; i < NUM_CONNECTIONS; ++i) {
+    //  computeCostForBackupsWithGPU(ps[index],h_potPathCosts,i,channels);
+    //}
 
     //-----------Select the cheapest combo using GPU Results-----------//
     int minCostGPU = 100000000;
