@@ -31,6 +31,7 @@ struct Channel{
     bool primary; //is this channel used for a primary path?
     int numBackups; //total protected;
     Connection *backupsOnChannel[NUM_CONNECTIONS];//Realistically, there will be far fewer than NUM_CONNECTIONS
+    Connection *d_backupsOnChannel[NUM_CONNECTIONS];
 };
 
 struct Edge {
@@ -99,7 +100,7 @@ void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryI
 int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePaths, int pInd);
 void computeCostForBackups(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts,Channel cs[2*N_EDGES][MAX_CHANNELS]);
 void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]);
-void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]);
+void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS], Connection *d_con);
 
 int vertexList[N_NODES+1];
 Edge edgeList[2*N_EDGES];
@@ -225,12 +226,12 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
                     //Technically, we should also know that it's not a primary path.
 
                     //for each edge of the protected connection's primary path
-                    for(int e2 = 0; disjoint && e2 <= (*(*cs[channelIndex].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+                    for(int e2 = 0; disjoint && e2 <= (*(*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath).index; ++e2) {
 
                         //see if its the same edge as used by our primary path.
                         for(int e3 = 0; disjoint && e3 <= p[p_ind].index; ++e3 ) {
 
-                            if((*(*cs[channelIndex].backupsOnChannel[bup]).primaryPath).edgeNums[e2] == p[p_ind].edgeNums[e3]) {
+                            if((*(*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath).edgeNums[e2] == p[p_ind].edgeNums[e3]) {
                                 //There is a non-disjoint primary path on this channel, so it is unusable.
 
                                 disjoint = false;
@@ -310,6 +311,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int *d_potPathCosts; //Device pointer for the array of Potential Path Costs
     int *h_potPathCosts; //Host pointer for the array of potential path costs.
 
+    Connection *d_cons; //Device pointer to the array of connections.
     Channel *d_channels; //Device pointer for the array of channels.
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
@@ -329,6 +331,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     }else {
 	cout << "Allocated Channels array on GPU\n";
     }
+
+    cudaMalloc((void **)&d_cons,sizeof(Connection)*NUM_CONNECTIONS);
     
 
     cudaMalloc((void **)&d_potPathCosts,potPathCosts_size);
@@ -361,7 +365,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
 
     //cpu_startTime = clock();
-    for(int c = 0; c < 1; ++c) {
+    for(int c = 0; c < 5; ++c) {
       
       //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
@@ -463,15 +467,20 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	(*cons[connectionNum].backupPath).edgeNums[p] = ps[index][minBackIndGPU].edgeNums[p];
     }
 
+    
+
     //Select Channels
     selectChannels(&cons[connectionNum],channels);
 
     //Increase the network load
-    increaseLoad(&cons[connectionNum],channels);
+    increaseLoad(&cons[connectionNum],channels,&d_cons[connectionNum]);
 
     //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
-    //cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
+    cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
+    //TESTING FOR COSTS KERNEL
+    cudaMemcpy(d_cons,&cons,sizeof(Connection)*NUM_CONNECTIONS,cudaMemcpyHostToDevice);
+    
     //--------------Print Network Load--------------//
     for(int m = 0; m < 2*N_EDGES; ++m) {
         cout << "LOAD: " << edgeList[m].v1 << " -> " << edgeList[m].v2 << ": " << edgeList[m].load << " | TP: " << edgeList[m].totalProtected << " | ";
@@ -503,7 +512,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     cudaFree(d_ps);
     cudaFree(d_potPathCosts);
-    //cudaFree(d_channels);
+    cudaFree(d_channels);
+    cudaFree(d_cons);
     
     free(h_potPathCosts);
     //cpu_endTime = clock();
@@ -724,7 +734,7 @@ void simulate(int *vertexList, Edge *edgeList){
     selectChannels(&cons[connectionNum],channels);
 
     //Increase the network load
-    increaseLoad(&cons[connectionNum],channels);
+    //    increaseLoad(&cons[connectionNum],channels); TODO: REIMPLEMENT WITH THE CORRECT NUM OF PARAMETERS FOR NON-GPU version.
 
 
     //--------------Print Network Load--------------//
@@ -770,7 +780,7 @@ void simulate(int *vertexList, Edge *edgeList){
     cout << "CPU Total Elapsed Time: " << cpu_elapsedTime << "\n";
 }
 
-void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]) {
+void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS], Connection *d_con) {
     if((*(*connection).primaryPath).index < 0) {
         cout << "Primary Path DNE?\n";
         return;
@@ -783,6 +793,7 @@ void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNE
         //Every edge in the primary path gets its load increased
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].primary = true;
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].backupsOnChannel[0] = connection;
+	channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].d_backupsOnChannel[0] = d_con;
         channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups += 1;
         (*(*(*connection).primaryPath).edges[i]).load += 1;
         (*(*(*connection).primaryPath).edges[i]).totalProtected += 1;
@@ -805,6 +816,7 @@ void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNE
         int numbs = channels[en][cNum].numBackups;
         channels[en][cNum].primary = false;
         channels[en][cNum].backupsOnChannel[numbs] = connection;
+	channels[en][cNum].d_backupsOnChannel[numbs] = d_con;
         channels[en][cNum].numBackups += 1;
         (*e).totalProtected +=1;
     }
