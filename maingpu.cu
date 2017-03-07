@@ -87,8 +87,8 @@ struct Connection {
     int combinedCost;
     bool validBackup;
     bool validPrimary;
-    Path *backupPath;
-    Path *primaryPath;
+    Path backupPath;
+    Path primaryPath;
 };
 
 void readGraphReorderEdgeList(int vertexList[],Edge compactEdgeList[2*N_EDGES],Edge reorderedEdgeList[2*N_NODES]);
@@ -226,12 +226,12 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
                     //Technically, we should also know that it's not a primary path.
 
                     //for each edge of the protected connection's primary path
-                    for(int e2 = 0; disjoint && e2 <= (*(*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath).index; ++e2) {
+                    for(int e2 = 0; disjoint && e2 <= (*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath.index; ++e2) {
 
                         //see if its the same edge as used by our primary path.
                         for(int e3 = 0; disjoint && e3 <= p[p_ind].index; ++e3 ) {
 
-                            if((*(*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath).edgeNums[e2] == p[p_ind].edgeNums[e3]) {
+                            if((*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath.edgeNums[e2] == p[p_ind].edgeNums[e3]) {
                                 //There is a non-disjoint primary path on this channel, so it is unusable.
 
                                 disjoint = false;
@@ -281,8 +281,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    simulate_GPU(vertexList,edgeList);
-    //simulate(vertexList,edgeList);
+    //simulate_GPU(vertexList,edgeList);
+    simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -365,7 +365,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
 
     //cpu_startTime = clock();
-    for(int c = 0; c < 5; ++c) {
+    for(int c = 0; c < 40; ++c) {
       
       //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
@@ -449,22 +449,22 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cons[connectionNum].combinedCost = minCostGPU;
     cons[connectionNum].validBackup = true;
     cons[connectionNum].validPrimary = true;
-    cons[connectionNum].backupPath = new Path();
-    cons[connectionNum].primaryPath = new Path();
-    (*cons[connectionNum].primaryPath).hops = ps[index][minPrimIndGPU].hops;
-    (*cons[connectionNum].primaryPath).index = ps[index][minPrimIndGPU].index;
-    (*cons[connectionNum].primaryPath).primary = true;
-    (*cons[connectionNum].backupPath).hops = ps[index][minBackIndGPU].hops;
-    (*cons[connectionNum].backupPath).index = ps[index][minBackIndGPU].index;
+    //cons[connectionNum].backupPath = new Path();
+    //cons[connectionNum].primaryPath = new Path();
+    cons[connectionNum].primaryPath.hops = ps[index][minPrimIndGPU].hops;
+    cons[connectionNum].primaryPath.index = ps[index][minPrimIndGPU].index;
+    cons[connectionNum].primaryPath.primary = true;
+    cons[connectionNum].backupPath.hops = ps[index][minBackIndGPU].hops;
+    cons[connectionNum].backupPath.index = ps[index][minBackIndGPU].index;
 
     for(int p = 0; p <= ps[index][minPrimIndGPU].index; ++p) {
-        (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimIndGPU].edges[p];
-        (*cons[connectionNum].primaryPath).freeEdges[p] = false;
-	(*cons[connectionNum].primaryPath).edgeNums[p] = ps[index][minPrimIndGPU].edgeNums[p];
+        cons[connectionNum].primaryPath.edges[p] = ps[index][minPrimIndGPU].edges[p];
+        cons[connectionNum].primaryPath.freeEdges[p] = false;
+	cons[connectionNum].primaryPath.edgeNums[p] = ps[index][minPrimIndGPU].edgeNums[p];
     }
     for(int p = 0; p <= ps[index][minBackIndGPU].index; ++p) {
-        (*cons[connectionNum].backupPath).edges[p] = ps[index][minBackIndGPU].edges[p];
-	(*cons[connectionNum].backupPath).edgeNums[p] = ps[index][minBackIndGPU].edgeNums[p];
+        cons[connectionNum].backupPath.edges[p] = ps[index][minBackIndGPU].edges[p];
+	cons[connectionNum].backupPath.edgeNums[p] = ps[index][minBackIndGPU].edgeNums[p];
     }
 
     
@@ -566,12 +566,12 @@ void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryI
                     //Technically, we should also know that it's not a primary path.
 
                     //for each edge of the protected connection's primary path
-                    for(int e2 = 0; disjoint && e2 <= (*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+		  for(int e2 = 0; disjoint && e2 <= (*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath.index; ++e2) {
 
                         //see if its the same edge as used by our primary path.
                         for(int e3 = 0; disjoint && e3 <= p[primaryInd].index; ++e3 ) {
 
-                            if((*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).edges[e2] == p[primaryInd].edges[e3]) {
+                            if((*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath.edges[e2] == p[primaryInd].edges[e3]) {
                                 //There is a non-disjoint primary path on this channel, so it is unusable.
 
                                 disjoint = false;
@@ -714,20 +714,20 @@ void simulate(int *vertexList, Edge *edgeList){
     cons[connectionNum].combinedCost = minCost;
     cons[connectionNum].validBackup = true;
     cons[connectionNum].validPrimary = true;
-    cons[connectionNum].backupPath = new Path();
-    cons[connectionNum].primaryPath = new Path();
-    (*cons[connectionNum].primaryPath).hops = ps[index][minPrimInd].hops;
-    (*cons[connectionNum].primaryPath).index = ps[index][minPrimInd].index;
-    (*cons[connectionNum].primaryPath).primary = true;
-    (*cons[connectionNum].backupPath).hops = ps[index][potPathInd[minPrimInd][minBackInd]].hops;
-    (*cons[connectionNum].backupPath).index = ps[index][potPathInd[minPrimInd][minBackInd]].index;
+    //cons[connectionNum].backupPath = new Path();
+    //cons[connectionNum].primaryPath = new Path();
+    cons[connectionNum].primaryPath.hops = ps[index][minPrimInd].hops;
+    cons[connectionNum].primaryPath.index = ps[index][minPrimInd].index;
+    cons[connectionNum].primaryPath.primary = true;
+    cons[connectionNum].backupPath.hops = ps[index][potPathInd[minPrimInd][minBackInd]].hops;
+    cons[connectionNum].backupPath.index = ps[index][potPathInd[minPrimInd][minBackInd]].index;
 
     for(int p = 0; p <= ps[index][minPrimInd].index; ++p) {
-        (*cons[connectionNum].primaryPath).edges[p] = ps[index][minPrimInd].edges[p];
-        (*cons[connectionNum].primaryPath).freeEdges[p] = false;
+        cons[connectionNum].primaryPath.edges[p] = ps[index][minPrimInd].edges[p];
+        cons[connectionNum].primaryPath.freeEdges[p] = false;
     }
     for(int p = 0; p <= ps[index][potPathInd[minPrimInd][minBackInd]].index; ++p) {
-        (*cons[connectionNum].backupPath).edges[p] = ps[index][potPathInd[minPrimInd][minBackInd]].edges[p];
+        cons[connectionNum].backupPath.edges[p] = ps[index][potPathInd[minPrimInd][minBackInd]].edges[p];
     }
 
     //Select Channels
@@ -781,33 +781,33 @@ void simulate(int *vertexList, Edge *edgeList){
 }
 
 void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS], Connection *d_con) {
-    if((*(*connection).primaryPath).index < 0) {
+    if((*connection).primaryPath.index < 0) {
         cout << "Primary Path DNE?\n";
         return;
     }
     //Increment the network load; put the backup on the channels
 
     //Here we are incrementing the network load for the PRIMARY PATH
-    for(int i = 0; i <= (*(*connection).primaryPath).index; ++i) {
+    for(int i = 0; i <= (*connection).primaryPath.index; ++i) {
 
         //Every edge in the primary path gets its load increased
-        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].primary = true;
-        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].backupsOnChannel[0] = connection;
-	channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].d_backupsOnChannel[0] = d_con;
-        channels[(*(*(*connection).primaryPath).edges[i]).edgeNum][(*(*connection).primaryPath).channelNum[i]].numBackups += 1;
-        (*(*(*connection).primaryPath).edges[i]).load += 1;
-        (*(*(*connection).primaryPath).edges[i]).totalProtected += 1;
+        channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].primary = true;
+        channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].backupsOnChannel[0] = connection;
+	channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].d_backupsOnChannel[0] = d_con;
+        channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].numBackups += 1;
+        (*(*connection).primaryPath.edges[i]).load += 1;
+        (*(*connection).primaryPath.edges[i]).totalProtected += 1;
     }
 
     //Here we are increasing the network load for the BACKUP PATH
-    for(int i = 0; i <= (*(*connection).backupPath).index; ++i) {
+    for(int i = 0; i <= (*connection).backupPath.index; ++i) {
         //Temp
-        Edge *e = (*(*connection).backupPath).edges[i];
-        int cNum = (*(*connection).backupPath).channelNum[i];
+        Edge *e = (*connection).backupPath.edges[i];
+        int cNum = (*connection).backupPath.channelNum[i];
 
         //first path to use this channel, or this is not a free edge for the backup path.
         //if(channels[(*e).edgeNum][cNum].numBackups == 0 || (*(*connection).backupPath).freeEdges[i] == false) {
-        if((*(*connection).backupPath).freeEdges[i] == false) {
+        if((*connection).backupPath.freeEdges[i] == false) {
             (*e).load += 1;
         }
 
@@ -840,20 +840,20 @@ void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
   */
     int edgeNum = -1;
     //Select Primary path channels;
-    for(int p = 0; p <= (*(*c).primaryPath).index; ++p){
-        edgeNum = (*(*(*c).primaryPath).edges[p]).edgeNum;
+    for(int p = 0; p <= (*c).primaryPath.index; ++p){
+        edgeNum = (*(*c).primaryPath.edges[p]).edgeNum;
         bool allSet = false;
         for(int ch = 0; !allSet && ch < MAX_CHANNELS; ++ch) {
             if(chan[edgeNum][ch].numBackups == 0) {
                 allSet = true;
-                (*(*c).primaryPath).channelNum[p] = ch;
+                (*c).primaryPath.channelNum[p] = ch;
             }
         }
     }
 
-    for(int e = 0; e <= (*(*c).backupPath).index; ++e) {
+    for(int e = 0; e <= (*c).backupPath.index; ++e) {
         bool free = false;
-        edgeNum = (*(*(*c).backupPath).edges[e]).edgeNum;
+        edgeNum = (*(*c).backupPath.edges[e]).edgeNum;
         int firstOpenChannel = MAX_CHANNELS+1;
 
         for(int ch = 0; !free && ch < MAX_CHANNELS; ++ch) {
@@ -882,12 +882,12 @@ void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
                 //Technically, we should also know that it's not a primary path.
 
                 //for each edge of the protected connection's primary path
-                for(int e2 = 0; disjoint && e2 <= (*(*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+                for(int e2 = 0; disjoint && e2 <= (*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath.index; ++e2) {
 
                     //see if its the same edge as used by our primary path.
-                    for(int e3 = 0; disjoint && e3 <= (*(*c).primaryPath).index; ++e3 ) {
+                    for(int e3 = 0; disjoint && e3 <= (*c).primaryPath.index; ++e3 ) {
 
-                        if((*(*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath).edges[e2] == (*(*c).primaryPath).edges[e3]) {
+                        if((*chan[edgeNum][ch].backupsOnChannel[bup]).primaryPath.edges[e2] == (*c).primaryPath.edges[e3]) {
                             //There is a non-disjoint primary path on this channel, so it is unusable.
                             //goto CHANNEL_LOOP_END;
                             disjoint = false;
@@ -899,13 +899,13 @@ void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
             if(disjoint) {
                 //This channel is free
                 free = true;
-                (*(*c).backupPath).channelNum[e] = ch;
-                (*(*c).backupPath).freeEdges[e] = true;
+                (*c).backupPath.channelNum[e] = ch;
+                (*c).backupPath.freeEdges[e] = true;
             }
         }
 
-        if((*(*c).backupPath).freeEdges[e] == false) {
-            (*(*c).backupPath).channelNum[e] = firstOpenChannel;
+        if((*c).backupPath.freeEdges[e] == false) {
+            (*c).backupPath.channelNum[e] = firstOpenChannel;
         }
     }
     //cout << "all set?\n";
@@ -952,12 +952,12 @@ void computeCostForBackups(SimplePath *p, int *potPathInd, int numPossiblePaths,
                     //Technically, we should also know that it's not a primary path.
 
                     //for each edge of the protected connection's primary path
-                    for(int e2 = 0; disjoint && e2 <= (*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).index; ++e2) {
+                    for(int e2 = 0; disjoint && e2 <= (*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath.index; ++e2) {
 
                         //see if its the same edge as used by our primary path.
                         for(int e3 = 0; disjoint && e3 <= p[primaryInd].index; ++e3 ) {
 
-                            if((*(*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath).edges[e2] == p[primaryInd].edges[e3]) {
+                            if((*channels[edgeNum][c].backupsOnChannel[bup]).primaryPath.edges[e2] == p[primaryInd].edges[e3]) {
                                 //There is a non-disjoint primary path on this channel, so it is unusable.
 
                                 disjoint = false;
