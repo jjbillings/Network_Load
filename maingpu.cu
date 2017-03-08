@@ -101,6 +101,7 @@ int determineCompatibleBackups(SimplePath *p, int *potPathInd, int numPossiblePa
 void computeCostForBackups(SimplePath *p, int *potPathInd, int numPotPaths, int backupIndex, int *pathCosts,Channel cs[2*N_EDGES][MAX_CHANNELS]);
 void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]);
 void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS], Connection *d_con);
+void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]);
 
 int vertexList[N_NODES+1];
 Edge edgeList[2*N_EDGES];
@@ -281,8 +282,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    //simulate_GPU(vertexList,edgeList);
-    simulate(vertexList,edgeList);
+    simulate_GPU(vertexList,edgeList);
+    //simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -734,7 +735,7 @@ void simulate(int *vertexList, Edge *edgeList){
     selectChannels(&cons[connectionNum],channels);
 
     //Increase the network load
-    //    increaseLoad(&cons[connectionNum],channels); TODO: REIMPLEMENT WITH THE CORRECT NUM OF PARAMETERS FOR NON-GPU version.
+    increaseLoad(&cons[connectionNum],channels);
 
 
     //--------------Print Network Load--------------//
@@ -822,6 +823,48 @@ void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNE
     }
 
 }
+
+void increaseLoad(Connection *connection, Channel channels[2*N_EDGES][MAX_CHANNELS]) {
+    if((*connection).primaryPath.index < 0) {
+        cout << "Primary Path DNE?\n";
+        return;
+    }
+    //Increment the network load; put the backup on the channels
+
+    //Here we are incrementing the network load for the PRIMARY PATH
+    for(int i = 0; i <= (*connection).primaryPath.index; ++i) {
+
+        //Every edge in the primary path gets its load increased
+        channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].primary = true;
+        channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].backupsOnChannel[0] = connection;
+        channels[(*(*connection).primaryPath.edges[i]).edgeNum][(*connection).primaryPath.channelNum[i]].numBackups += 1;
+        (*(*connection).primaryPath.edges[i]).load += 1;
+        (*(*connection).primaryPath.edges[i]).totalProtected += 1;
+    }
+
+    //Here we are increasing the network load for the BACKUP PATH
+    for(int i = 0; i <= (*connection).backupPath.index; ++i) {
+        //Temp
+        Edge *e = (*connection).backupPath.edges[i];
+        int cNum = (*connection).backupPath.channelNum[i];
+
+        //first path to use this channel, or this is not a free edge for the backup path.
+        //if(channels[(*e).edgeNum][cNum].numBackups == 0 || (*(*connection).backupPath).freeEdges[i] == false) {
+        if((*connection).backupPath.freeEdges[i] == false) {
+            (*e).load += 1;
+        }
+
+        //Marks that the connection is protected on this channel.
+        int en = (*e).edgeNum;
+        int numbs = channels[en][cNum].numBackups;
+        channels[en][cNum].primary = false;
+        channels[en][cNum].backupsOnChannel[numbs] = connection;
+        channels[en][cNum].numBackups += 1;
+        (*e).totalProtected +=1;
+    }
+
+}
+
 
 //TODO: This method contains a lot of redundant code that is also in computeCostForBackups. Consider combining.
 //I wanted to modularize the code as much as possible this time around, which is why there's so much redundancy in this method.
