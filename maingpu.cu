@@ -180,6 +180,7 @@ __global__ void determineCompatibleBackups2(SimplePath *ps, int *potPathCosts,in
   }
 }
 
+//---------Kernel for computing the cost of each primary/backup combo. WORKING -------//
 __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Channel *cs) {
 
   int p_ind = (conInd * NUM_CONNECTIONS) + blockIdx.x;
@@ -397,20 +398,18 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
 
+    cudaError_t error_code = cudaGetLastError();
     
-    if(cudaSuccess != cudaGetLastError()) {
-      cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
+    if(cudaSuccess != error_code) {
+      cout << "CUDA ERROR IN KERNEL: " << error_code << "\n";
+      cout << "ERROR: " << cudaGetErrorString(error_code) << "\n";
     }
 
     //---------Launch the Kernel----------//
     costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
     
     //---------Copy the Results back to the host ---//
-    cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);    
-
-    //for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-    //  computeCostForBackupsWithGPU(ps[index],h_potPathCosts,i,channels);
-    //}
+    cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);
 
     //-----------Select the cheapest combo using GPU Results-----------//
     int minCostGPU = 100000000;
@@ -450,8 +449,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cons[connectionNum].combinedCost = minCostGPU;
     cons[connectionNum].validBackup = true;
     cons[connectionNum].validPrimary = true;
-    //cons[connectionNum].backupPath = new Path();
-    //cons[connectionNum].primaryPath = new Path();
     cons[connectionNum].primaryPath.hops = ps[index][minPrimIndGPU].hops;
     cons[connectionNum].primaryPath.index = ps[index][minPrimIndGPU].index;
     cons[connectionNum].primaryPath.primary = true;
@@ -479,8 +476,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
     cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
-    //TESTING FOR COSTS KERNEL
-    cudaMemcpy(d_cons,&cons,sizeof(Connection)*NUM_CONNECTIONS,cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_cons,&cons,sizeof(Connection)*NUM_CONNECTIONS,cudaMemcpyHostToDevice);
+    cudaMemcpy(&d_cons[connectionNum],&cons[connectionNum],sizeof(Connection),cudaMemcpyHostToDevice);
     
     //--------------Print Network Load--------------//
     for(int m = 0; m < 2*N_EDGES; ++m) {
@@ -497,7 +494,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     }
     
-
     connectionNum++;
     }//ENDFOR
 
@@ -517,12 +513,11 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaFree(d_cons);
     
     free(h_potPathCosts);
-    //cpu_endTime = clock();
     cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
 
         cout << "Kernel Execution took: " << gpu_totalTime << " milliseconds\n";
 	cout << "Total time: " << cpu_elapsedTime << " milliseconds\n";
-	//cout << "CPU Start: " << cpu_startTime << " CPU End: " << cpu_endTime << "\n";
+	
 }
 
 
