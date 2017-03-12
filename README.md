@@ -22,11 +22,14 @@ C++ app to simulate the load on an optical network.
 			- [x] * Figure out how to index into the arrays via threads/blocks
 			- [x] * Combine pathCosts array and potPathInd array into one
 			- [x] * Copy potPathCosts array back to Host
-		- [ ] * Write Kernel for computeCost()
-			- [ ] * Copy channels array to the GPU
-			- [ ] * Determine cost per primary/backup combo
-			- [ ] * Copy results back to Host
+		- [x] * Write Kernel for computeCost()
+			- [x] * Copy channels array to the GPU
+			- [x] * Determine cost per primary/backup combo
+			- [x] * Copy results back to Host
 	- [x] * Measure GPU running time
 - [ ] 4. Phase 2
-	- [ ] * Compare CPU/GPU running time
+	- [x] * Compare CPU/GPU running time
 	- [ ] * **If we have this for Rall, that would be dope.**
+- [ ] 5. Try a larger network (COSTS Network was recommended by Kim)
+- [ ] 6. Use a much larger set of test data.
+- [ ] 7. Drastically change the parameters - Allocate like 100 random connections and then measure the CPU vs. GPU performance over a large number of samples (1 sample being an allocation of 100 random connections). Then increase or decrease the parameters one at a time. MAX_CHANNELS,NUM_CONNECTIONS I think would be appropriate ones to start with.
