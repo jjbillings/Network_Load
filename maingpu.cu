@@ -293,7 +293,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     clock_t cpu_startTime, cpu_endTime;
     double cpu_elapsedTime = 0;
     float gpu_totalTime = 0;
-    cpu_startTime = clock();
+    //cpu_startTime = clock();
     
     int connectionNum = 0;
     const size_t sp_size = sizeof(SimplePath);
@@ -366,7 +366,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEvent_t start, stop;
     
 
-    //cpu_startTime = clock();
+    
+    cpu_startTime = clock();
     for(int c = 0; c < 40; ++c) {
       
       //Attempt to allocate SOME connection onto the network
@@ -520,7 +521,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	
 }
 
-
+//-----------No longer using this method, since we have switched to GPU---------//
 void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryInd, Channel cs[2*N_EDGES][MAX_CHANNELS]) {
 
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
@@ -608,7 +609,7 @@ void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryI
 void simulate(int *vertexList, Edge *edgeList){
     clock_t cpu_startTime, cpu_endTime;
     double cpu_elapsedTime = 0;
-    cpu_startTime = clock();
+    //cpu_startTime = clock();
 
     //Test Data
     int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
@@ -637,6 +638,7 @@ void simulate(int *vertexList, Edge *edgeList){
     //At this point, we COULD delete[] any paths in the array that we didn't use.
 
 
+        cpu_startTime = clock();
     for(int num = 0; num < 40; ++num) {
     //Attempt to allocate SOME connection onto the network
     int s = v1[connectionNum];
