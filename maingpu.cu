@@ -180,6 +180,7 @@ __global__ void determineCompatibleBackups2(SimplePath *ps, int *potPathCosts,in
   }
 }
 
+//---------Kernel for computing the cost of each primary/backup combo. WORKING -------//
 __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Channel *cs) {
 
   int p_ind = (conInd * NUM_CONNECTIONS) + blockIdx.x;
@@ -292,7 +293,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     clock_t cpu_startTime, cpu_endTime;
     double cpu_elapsedTime = 0;
     float gpu_totalTime = 0;
-    cpu_startTime = clock();
+    //cpu_startTime = clock();
     
     int connectionNum = 0;
     const size_t sp_size = sizeof(SimplePath);
@@ -365,7 +366,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEvent_t start, stop;
     
 
-    //cpu_startTime = clock();
+    
+    cpu_startTime = clock();
     for(int c = 0; c < 40; ++c) {
       
       //Attempt to allocate SOME connection onto the network
@@ -397,20 +399,18 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
 
+    cudaError_t error_code = cudaGetLastError();
     
-    if(cudaSuccess != cudaGetLastError()) {
-      cout << "CUDA ERROR IN KERNEL: " << cudaGetLastError() << "\n";
+    if(cudaSuccess != error_code) {
+      cout << "CUDA ERROR IN KERNEL: " << error_code << "\n";
+      cout << "ERROR: " << cudaGetErrorString(error_code) << "\n";
     }
 
     //---------Launch the Kernel----------//
     costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
     
     //---------Copy the Results back to the host ---//
-    cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);    
-
-    //for(int i = 0; i < NUM_CONNECTIONS; ++i) {
-    //  computeCostForBackupsWithGPU(ps[index],h_potPathCosts,i,channels);
-    //}
+    cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);
 
     //-----------Select the cheapest combo using GPU Results-----------//
     int minCostGPU = 100000000;
@@ -450,8 +450,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cons[connectionNum].combinedCost = minCostGPU;
     cons[connectionNum].validBackup = true;
     cons[connectionNum].validPrimary = true;
-    //cons[connectionNum].backupPath = new Path();
-    //cons[connectionNum].primaryPath = new Path();
     cons[connectionNum].primaryPath.hops = ps[index][minPrimIndGPU].hops;
     cons[connectionNum].primaryPath.index = ps[index][minPrimIndGPU].index;
     cons[connectionNum].primaryPath.primary = true;
@@ -479,8 +477,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
     cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
-    //TESTING FOR COSTS KERNEL
-    cudaMemcpy(d_cons,&cons,sizeof(Connection)*NUM_CONNECTIONS,cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_cons,&cons,sizeof(Connection)*NUM_CONNECTIONS,cudaMemcpyHostToDevice);
+    cudaMemcpy(&d_cons[connectionNum],&cons[connectionNum],sizeof(Connection),cudaMemcpyHostToDevice);
     
     //--------------Print Network Load--------------//
     for(int m = 0; m < 2*N_EDGES; ++m) {
@@ -497,7 +495,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     }
     
-
     connectionNum++;
     }//ENDFOR
 
@@ -517,15 +514,14 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaFree(d_cons);
     
     free(h_potPathCosts);
-    //cpu_endTime = clock();
     cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
 
         cout << "Kernel Execution took: " << gpu_totalTime << " milliseconds\n";
 	cout << "Total time: " << cpu_elapsedTime << " milliseconds\n";
-	//cout << "CPU Start: " << cpu_startTime << " CPU End: " << cpu_endTime << "\n";
+	
 }
 
-
+//-----------No longer using this method, since we have switched to GPU---------//
 void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryInd, Channel cs[2*N_EDGES][MAX_CHANNELS]) {
 
     for(int i = 0; i < NUM_CONNECTIONS; ++i) {
@@ -613,7 +609,7 @@ void computeCostForBackupsWithGPU(SimplePath *p, int *potPathCosts, int primaryI
 void simulate(int *vertexList, Edge *edgeList){
     clock_t cpu_startTime, cpu_endTime;
     double cpu_elapsedTime = 0;
-    cpu_startTime = clock();
+    //cpu_startTime = clock();
 
     //Test Data
     int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
@@ -642,6 +638,7 @@ void simulate(int *vertexList, Edge *edgeList){
     //At this point, we COULD delete[] any paths in the array that we didn't use.
 
 
+        cpu_startTime = clock();
     for(int num = 0; num < 40; ++num) {
     //Attempt to allocate SOME connection onto the network
     int s = v1[connectionNum];
