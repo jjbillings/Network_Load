@@ -269,9 +269,9 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     const size_t ps_size = ((N_NODES*N_NODES)*NUM_CONNECTIONS)*sp_size; //Size of the entire 2D array
     const size_t row_size = NUM_CONNECTIONS*sp_size; //Size of a SINGLE row in the array of SimplePaths
     const size_t channels_size = ((2*N_EDGES)*MAX_CHANNELS)*sizeof(Channel);
-    const size_t filtered_compat_paths_size = (2*N_NODES*NUM_CONNECTIONS*NUM_CONNECTIONS*sizeof(int));
-    const size_t numPaths_size = 2*N_NODES*sizeof(int);
-    const size_t numCompatPaths_size = 2*N_NODES*NUM_CONNECTIONS*sizeof(int);
+    const size_t filtered_compat_paths_size = (N_NODES*N_NODES*NUM_CONNECTIONS*NUM_CONNECTIONS*sizeof(int));
+    const size_t numPaths_size = N_NODES*N_NODES*sizeof(int);
+    const size_t numCompatPaths_size = N_NODES*N_NODES*NUM_CONNECTIONS*sizeof(int);
     
     //Test Data
     int v1[40] = {9, 5, 6, 1, 3, 5, 4, 9, 9, 9, 7, 8, 2, 10, 3, 5, 9, 3, 2, 3, 5, 2, 3, 3, 10, 9, 10, 2, 1, 1, 3, 2, 9, 5, 4, 6, 10, 5, 0, 1};
@@ -285,7 +285,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     Channel *d_channels; //Device pointer for the array of channels.
     int *h_filteredPaths;
     int *d_filteredPaths;
-    int *numPaths;
+    int *numPosPaths;
     int *numCompatPaths;
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
@@ -318,8 +318,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     h_potPathCosts = (int *)malloc(potPathCosts_size);
 
     h_filteredPaths = (int *)malloc(filtered_compat_paths_size);
-
-    numPaths = (int *)malloc(numPaths_size);
+    numPosPaths = (int *)malloc(numPaths_size);
     numCompatPaths = (int *)malloc(numCompatPaths_size);
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
@@ -327,16 +326,18 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
         for(int dest = 0; dest < N_NODES; ++dest) {
             if(src != dest) {
                 int index = (src*N_NODES)+dest;
-                numPaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
+                numPosPaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
                 //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
             }
         }
     }
 
+    cout << "Computed all paths\n";
+
     for(int src = 0; src < N_NODES; ++src) {
       for(int dest = 0; dest < N_NODES; ++dest) {
 	int index = (src * N_NODES) + dest;
-	prefilterCompatibleBackups(*ps[index], h_filteredPaths, numCompatPaths, numPaths[index], src, dest);
+	//prefilterCompatibleBackups(ps[index], h_filteredPaths, numCompatPaths, numPosPaths[index], src, dest);
       }
     }
 
@@ -499,7 +500,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     free(h_potPathCosts);
     free(h_filteredPaths);
-    free(numPaths);
+    free(numPosPaths);
     free(numCompatPaths);
     
     cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
