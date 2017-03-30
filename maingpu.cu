@@ -286,7 +286,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int *h_filteredPaths;
     int *d_filteredPaths;
     int *numPosPaths;
-    int *numCompatPaths;
+    int *h_numCompatPaths;
+    int *d_numCompatPaths;
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
         ps[i] = new SimplePath[NUM_CONNECTIONS];
@@ -312,6 +313,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     cudaMalloc((void **)&d_filteredPaths,filtered_compat_paths_size);
 
+    cudaMalloc((void **)&d_numCompatPaths,numCompatPaths_size);
+
     cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
     
@@ -319,7 +322,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     h_filteredPaths = (int *)malloc(filtered_compat_paths_size);
     numPosPaths = (int *)malloc(numPaths_size);
-    numCompatPaths = (int *)malloc(numCompatPaths_size);
+    h_numCompatPaths = (int *)malloc(numCompatPaths_size);
 
     //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
     for(int src = 0; src < N_NODES; ++src) {
@@ -340,7 +343,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       for(int dest = 0; dest < N_NODES; ++dest) {
 	int index = (src * N_NODES) + dest;
 	if(src != dest){
-	  prefilterCompatibleBackups(ps[index], h_filteredPaths, numCompatPaths, numPosPaths[index], src, dest);
+	  prefilterCompatibleBackups(ps[index], h_filteredPaths, h_numCompatPaths, numPosPaths[index], src, dest);
 	}
       }
     }
@@ -349,6 +352,12 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
       cudaMemcpy(d_ps + (i*(NUM_CONNECTIONS)),ps[i],row_size,cudaMemcpyHostToDevice);
     }
+
+    //Copy filtered paths to the GPU
+    cudaMemcpy(d_filteredPaths, h_filteredPaths, filtered_compat_paths_size, cudaMemcpyHostToDevice);
+
+    //Copy compatible paths array to GPU
+    cudaMemcpy(d_numCompatPaths, h_numCompatPaths, numCompatPaths_size, cudaMemcpyHostToDevice);
 
     //Setup components for GPU benchmarking.
     cudaEvent_t start, stop;
@@ -501,11 +510,12 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaFree(d_channels);
     cudaFree(d_cons);
     cudaFree(d_filteredPaths);
+    cudaFree(d_numCompatPaths);
     
     free(h_potPathCosts);
     free(h_filteredPaths);
     free(numPosPaths);
-    free(numCompatPaths);
+    free(h_numCompatPaths);
     
     cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
 
@@ -543,9 +553,6 @@ void prefilterCompatibleBackups(SimplePath *p, int *filteredPaths, int *numCompa
       //Done checking all backups for this primary
       int index = (((src*N_NODES)+dest)*NUM_CONNECTIONS) + pInd;
       numCompatPaths[index] = numDisjoint;
-      if(numDisjoint > 0) {
-      cout << "numCompat " << numDisjoint << "\n";
-      }
       numDisjoint = 0;
     }
 }
