@@ -328,7 +328,9 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
                 int index = (src*N_NODES)+dest;
                 numPosPaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
                 //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
-            }
+            }else {
+	      numPosPaths[(src*N_NODES)+dest] = 0; //Added so numPosPaths would have a real value for cases when src=dest.
+	    }
         }
     }
 
@@ -337,7 +339,9 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     for(int src = 0; src < N_NODES; ++src) {
       for(int dest = 0; dest < N_NODES; ++dest) {
 	int index = (src * N_NODES) + dest;
-	//prefilterCompatibleBackups(ps[index], h_filteredPaths, numCompatPaths, numPosPaths[index], src, dest);
+	if(src != dest){
+	  prefilterCompatibleBackups(ps[index], h_filteredPaths, numCompatPaths, numPosPaths[index], src, dest);
+	}
       }
     }
 
@@ -539,6 +543,9 @@ void prefilterCompatibleBackups(SimplePath *p, int *filteredPaths, int *numCompa
       //Done checking all backups for this primary
       int index = (((src*N_NODES)+dest)*NUM_CONNECTIONS) + pInd;
       numCompatPaths[index] = numDisjoint;
+      if(numDisjoint > 0) {
+      cout << "numCompat " << numDisjoint << "\n";
+      }
       numDisjoint = 0;
     }
 }
