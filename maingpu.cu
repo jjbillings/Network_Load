@@ -455,7 +455,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     
     cpu_startTime = clock();
-    for(int c = 0; c < 2; ++c) {
+    for(int c = 0; c < 40; ++c) {
       
       //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
