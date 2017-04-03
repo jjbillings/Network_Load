@@ -230,6 +230,95 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
     
 }
 
+
+//---------Kernel for computing the cost of each primary/backup combo using the list of filtered paths. NOT WORKING -------//
+__global__ void filteredCostsKernel(SimplePath *p, int *potPathCosts, int conInd , Channel *cs, int *numCompatPaths, int *filteredPaths) {
+
+  int p_ind = (conInd * NUM_CONNECTIONS) + blockIdx.x;
+  //int b_ind = (conInd * NUM_CONNECTIONS) + threadIdx.x;
+  int index = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
+
+  if(numCompatPaths[p_ind] == 0) { // I don't think this condition will ever get triggered.
+    return;
+  }
+
+  if(threadIdx.x >= numCompatPaths[p_ind]) {
+    return;
+  }
+
+  int fpind = (conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
+  int b_ind = filteredPaths[(conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x]; //TODO: CHECK THIS.
+        int cost = 0;
+
+        for(int e = 0; e <= p[b_ind].index; ++e) {
+            bool free = false;
+            int edgeNum = p[b_ind].edgeNums[e];
+	    
+            int firstOpenChannel = MAX_CHANNELS+1;
+
+            for(int c = 0; !free && c < MAX_CHANNELS; ++c) {
+
+	        int channelIndex = (edgeNum * MAX_CHANNELS)+c;
+	        if(cs[channelIndex].primary == true) {
+                    continue;
+                }
+
+                //At this point, we know that there are no primary paths on this channel
+                //Thus we must check and see if it is "free".
+
+                //we COULD use this channel, but there may be a "free" one further down.
+                if(cs[channelIndex].numBackups == 0) {
+                    if(c < firstOpenChannel) {
+                        firstOpenChannel = c;
+                    }
+                    continue;
+                }
+
+                bool disjoint = true;
+
+                //Check every connection currently on protected on the channel
+                for(int bup = 0; disjoint && bup < cs[channelIndex].numBackups; ++bup) {
+
+                    //At this point, we know that there is at least one path protected on this channel.
+                    //Technically, we should also know that it's not a primary path.
+
+                    //for each edge of the protected connection's primary path
+                    for(int e2 = 0; disjoint && e2 <= (*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath.index; ++e2) {
+
+                        //see if its the same edge as used by our primary path.
+                        for(int e3 = 0; disjoint && e3 <= p[p_ind].index; ++e3 ) {
+
+                            if((*cs[channelIndex].d_backupsOnChannel[bup]).primaryPath.edgeNums[e2] == p[p_ind].edgeNums[e3]) {
+                                //There is a non-disjoint primary path on this channel, so it is unusable.
+
+                                disjoint = false;
+                            }
+                        }
+                    }
+                }
+
+                if(disjoint) {
+                    //This channel is free
+                    free = true;
+                }
+            }
+
+            if(!free) {
+                if(firstOpenChannel < MAX_CHANNELS) {
+                    cost++;
+                }else {
+                    cost = 1000000;
+                    break;
+                }
+
+            }
+
+        }
+
+        potPathCosts[index] = cost;
+    
+}
+
 /*
  *TODO: I totally thought I made the algorithm be based on BFS, but it is in fact based on DFS.
  *So REVERSE the order of the edge list. Currently, the neighbor with the lowest degree gets pushed
@@ -353,6 +442,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cudaMemcpy(d_ps + (i*(NUM_CONNECTIONS)),ps[i],row_size,cudaMemcpyHostToDevice);
     }
 
+    
     //Copy filtered paths to the GPU
     cudaMemcpy(d_filteredPaths, h_filteredPaths, filtered_compat_paths_size, cudaMemcpyHostToDevice);
 
@@ -365,7 +455,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     
     cpu_startTime = clock();
-    for(int c = 0; c < 40; ++c) {
+    for(int c = 0; c < 2; ++c) {
       
       //Attempt to allocate SOME connection onto the network
       int s = v1[connectionNum];
@@ -382,7 +472,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaEventRecord(start);
     
     //-----------Launch the Kernel-------------//
-    determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
+    //determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
     //    cudaDeviceSynchronize();
 
     //BENCHMARKING
@@ -404,7 +494,10 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     }
 
     //---------Launch the Kernel----------//
-    costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
+    //costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
+
+    //TODO: TESTING THIS KERNEL
+    filteredCostsKernel<<<numPosPaths[index]-1,numPosPaths[index]-1>>>(d_ps, d_potPathCosts, index, d_channels, d_numCompatPaths, d_filteredPaths);
     
     //---------Copy the Results back to the host ---//
     cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);
@@ -414,7 +507,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int minPrimIndGPU = -1;
     int minBackIndGPU = -1;
 
-    for(int p = 0; p < NUM_CONNECTIONS; ++p) {
+    for(int p = 0; p < numPosPaths[index]; ++p) {
         int primaryCostGPU = ps[index][p].hops;
 
         for(int b = 0; b < NUM_CONNECTIONS; ++b) {
@@ -511,6 +604,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     cudaFree(d_cons);
     cudaFree(d_filteredPaths);
     cudaFree(d_numCompatPaths);
+
     
     free(h_potPathCosts);
     free(h_filteredPaths);
@@ -544,7 +638,7 @@ void prefilterCompatibleBackups(SimplePath *p, int *filteredPaths, int *numCompa
 
 	  if(disjoint) {
 	    int filteredIndex = (NUM_CONNECTIONS*NUM_CONNECTIONS*((src*N_NODES)+dest)) + (pInd*NUM_CONNECTIONS) + numDisjoint;
-	    filteredPaths[filteredIndex] = (pInd*NUM_CONNECTIONS)+bInd;//Index for this compatible backup path.
+	    filteredPaths[filteredIndex] = (((src*N_NODES)+dest)*NUM_CONNECTIONS)+bInd;//Index for this compatible backup path.
 	    numDisjoint++;
 	    
 	  }
