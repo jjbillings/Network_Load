@@ -5,3 +5,4 @@ backups/
 load_per_edge/
 *.out.*
 *.out*
+*.test

@@ -497,7 +497,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
 
     //TODO: TESTING THIS KERNEL
-    filteredCostsKernel<<<numPosPaths[index]-1,numPosPaths[index]-1>>>(d_ps, d_potPathCosts, index, d_channels, d_numCompatPaths, d_filteredPaths);
+    filteredCostsKernel<<<numPosPaths[index],numPosPaths[index]>>>(d_ps, d_potPathCosts, index, d_channels, d_numCompatPaths, d_filteredPaths);
     
     //---------Copy the Results back to the host ---//
     cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);
