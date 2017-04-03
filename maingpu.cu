@@ -510,7 +510,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     for(int p = 0; p < numPosPaths[index]; ++p) {
         int primaryCostGPU = ps[index][p].hops;
 
-        for(int b = 0; b < NUM_CONNECTIONS; ++b) {
+        for(int b = 0; b < h_numCompatPaths[(index*NUM_CONNECTIONS)+p]; ++b) {
 	  int f = (p*NUM_CONNECTIONS)+b;
 	  if(h_potPathCosts[(p*NUM_CONNECTIONS)+b] < 0) {
 	      continue;
@@ -518,7 +518,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
           if((h_potPathCosts[(p*NUM_CONNECTIONS)+b] + primaryCostGPU) < minCostGPU) {
                 minCostGPU = (h_potPathCosts[(p*NUM_CONNECTIONS)+b] + primaryCostGPU);
                 minPrimIndGPU = p;
-                minBackIndGPU = b;
+                minBackIndGPU = h_filteredPaths[(index*NUM_CONNECTIONS*NUM_CONNECTIONS)+(p*NUM_CONNECTIONS)+b]-(index*NUM_CONNECTIONS);
           }
         }
     }
