@@ -16,8 +16,9 @@
 
 using namespace std;
 
-#define NUM_CONNECTIONS 500
-#define MAX_CHANNELS 300
+#define NUM_CONNECTIONS 1000
+#define CONNECTIONS 1000
+#define MAX_CHANNELS 500
 #define SAMPLES 1
 
 struct SimplePath;
@@ -234,18 +235,12 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
 __global__ void filteredCostsKernel(SimplePath *p, int *potPathCosts, int conInd , Channel *cs, int *numCompatPaths, int *filteredPaths) {
 
   int p_ind = (conInd * NUM_CONNECTIONS) + blockIdx.x;
-  //int b_ind = (conInd * NUM_CONNECTIONS) + threadIdx.x;
   int index = (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
-
-  if(numCompatPaths[p_ind] == 0) { // I don't think this condition will ever get triggered.
-    return;
-  }
 
   if(threadIdx.x >= numCompatPaths[p_ind]) {
     return;
   }
 
-  int fpind = (conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
   int b_ind = filteredPaths[(conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x];
         int cost = 0;
 
@@ -348,7 +343,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     clock_t cpu_startTime, cpu_endTime;
     double cpu_elapsedTime = 0;
     float gpu_totalTime = 0;
-    //cpu_startTime = clock();
     
     int connectionNum = 0;
 
@@ -413,21 +407,20 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     numPosPaths = (int *)malloc(numPaths_size);
     h_numCompatPaths = (int *)malloc(numCompatPaths_size);
 
-    //We COULD parallelize this by giving a thread a source/dest combo to compute the paths of. potentially beneficial for large graphs
+    //Compute all simple paths
     for(int src = 0; src < N_NODES; ++src) {
         for(int dest = 0; dest < N_NODES; ++dest) {
             if(src != dest) {
                 int index = (src*N_NODES)+dest;
                 numPosPaths[index] = computeAllSimplePathsN(ps,vertexList,edgeList,src,dest,N_NODES);
-                //cout <<"All simple paths computed and stored! " << npaths[index] << " paths between " << src << " and " << dest << "\n";
             }else {
 	      numPosPaths[(src*N_NODES)+dest] = 0; //Added so numPosPaths would have a real value for cases when src=dest.
 	    }
         }
     }
 
-    cout << "Computed all paths\n";
 
+    //Filter the compatible paths
     for(int src = 0; src < N_NODES; ++src) {
       for(int dest = 0; dest < N_NODES; ++dest) {
 	int index = (src * N_NODES) + dest;
@@ -455,25 +448,31 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 
     
     cpu_startTime = clock();
-    for(int c = 0; c < 40; ++c) {
+    for(int c = 0; c < CONNECTIONS; ++c) {
       
       //Attempt to allocate SOME connection onto the network
-      int s = v1[connectionNum];
-      int d = v2[connectionNum];
+      //int s = v1[connectionNum];
+      //int d = v2[connectionNum];
+
+      int s = 0;
+      int d = 0;
+      while(s == d) {
+	s = rand()%N_NODES;
+	d = rand()%N_NODES;
+      }
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
-    //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
 
     
+
     //BENCHMARKING
     cudaEventRecord(start);
-    
-    //-----------Launch the Kernel-------------//
-    //determineCompatibleBackups<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts,index);
-    //    cudaDeviceSynchronize();
+
+    //--------Launch the Kernel---------//
+    filteredCostsKernel<<<numPosPaths[index],numPosPaths[index]>>>(d_ps, d_potPathCosts, index, d_channels, d_numCompatPaths, d_filteredPaths);
 
     //BENCHMARKING
     cudaEventRecord(stop);
@@ -481,7 +480,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     float milli = 0;
     cudaEventElapsedTime(&milli,start,stop);
     gpu_totalTime += milli;
-    //cout << "Kernel Execution took: " << milli << " milliseconds\n";
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
@@ -492,12 +490,7 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
       cout << "CUDA ERROR IN KERNEL: " << error_code << "\n";
       cout << "ERROR: " << cudaGetErrorString(error_code) << "\n";
     }
-
-    //---------Launch the Kernel----------//
-    //costsKernel<<<NUM_CONNECTIONS,NUM_CONNECTIONS>>>(d_ps, d_potPathCosts, index,d_channels);
-
-    //TODO: TESTING THIS KERNEL
-    filteredCostsKernel<<<numPosPaths[index],numPosPaths[index]>>>(d_ps, d_potPathCosts, index, d_channels, d_numCompatPaths, d_filteredPaths);
+    
     
     //---------Copy the Results back to the host ---//
     cudaMemcpy(h_potPathCosts,d_potPathCosts,potPathCosts_size,cudaMemcpyDeviceToHost);
@@ -556,9 +549,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
 	cons[connectionNum].backupPath.edgeNums[p] = ps[index][minBackIndGPU].edgeNums[p];
     }
 
-    
 
-    //Select Channels
+    //Select the appropriate Channels for the selected connection
     selectChannels(&cons[connectionNum],channels);
 
     //Increase the network load
@@ -567,7 +559,6 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     //NOTE: We can 100% only copy individual channels to the GPU. i.e. if only channels 3 and 41 were updated, we can copy ONLY those channels if we want to
     cudaMemcpy(d_channels,&channels,channels_size,cudaMemcpyHostToDevice);
 
-    //cudaMemcpy(d_cons,&cons,sizeof(Connection)*NUM_CONNECTIONS,cudaMemcpyHostToDevice);
     cudaMemcpy(&d_cons[connectionNum],&cons[connectionNum],sizeof(Connection),cudaMemcpyHostToDevice);
     
     //--------------Print Network Load--------------//
@@ -613,8 +604,8 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     
     cpu_elapsedTime = ((double) (cpu_endTime - cpu_startTime)/CLOCKS_PER_SEC) * 1000;
 
-        cout << "Kernel Execution took: " << gpu_totalTime << " milliseconds\n";
-	cout << "Total time: " << cpu_elapsedTime << " milliseconds\n";
+    cout << "Kernel Execution took: " << gpu_totalTime << " milliseconds\n";
+    cout << "Total time: " << cpu_elapsedTime << " milliseconds\n";
 	
 }
 
@@ -769,16 +760,16 @@ void simulate(int *vertexList, Edge *edgeList){
 
 
         cpu_startTime = clock();
-    for(int num = 0; num < 40; ++num) {
+    for(int num = 0; num < CONNECTIONS; ++num) {
     //Attempt to allocate SOME connection onto the network
-    int s = v1[connectionNum];
-    int d = v2[connectionNum];
-    //int s = rand() % N_NODES;
-    //int d = rand() % N_NODES;
-    //while(s == d) {
-    //    s = rand()%N_NODES;
-    //    d = rand()%N_NODES;
-    //}
+    //int s = v1[connectionNum];
+    //int d = v2[connectionNum];
+    int s = rand() % N_NODES;
+    int d = rand() % N_NODES;
+    while(s == d) {
+        s = rand()%N_NODES;
+        d = rand()%N_NODES;
+    }
 
     //Allocate storage for the potential primary/backup path combos
     int index = (s*N_NODES) + d;
@@ -1040,7 +1031,8 @@ void selectChannels(Connection *c, Channel chan[2*N_EDGES][MAX_CHANNELS]) {
                 if(ch < firstOpenChannel) {
                     firstOpenChannel = ch;
                 }
-                continue;
+                //continue;
+		break;
             }
 
             bool disjoint = true;
