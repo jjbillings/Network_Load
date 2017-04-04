@@ -17,13 +17,12 @@
 using namespace std;
 
 #define NUM_CONNECTIONS 500
-#define MAX_CHANNELS 30
+#define MAX_CHANNELS 300
 #define SAMPLES 1
 
 struct SimplePath;
 struct Path;
 struct Edge;
-struct Connection;
 struct Connection;
 struct Channel;
 
@@ -231,7 +230,7 @@ __global__ void costsKernel(SimplePath *p, int *potPathCosts, int conInd , Chann
 }
 
 
-//---------Kernel for computing the cost of each primary/backup combo using the list of filtered paths. NOT WORKING -------//
+//---------Kernel for computing the cost of each primary/backup combo using the list of filtered paths. WORKING-------//
 __global__ void filteredCostsKernel(SimplePath *p, int *potPathCosts, int conInd , Channel *cs, int *numCompatPaths, int *filteredPaths) {
 
   int p_ind = (conInd * NUM_CONNECTIONS) + blockIdx.x;
@@ -247,7 +246,7 @@ __global__ void filteredCostsKernel(SimplePath *p, int *potPathCosts, int conInd
   }
 
   int fpind = (conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x;
-  int b_ind = filteredPaths[(conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x]; //TODO: CHECK THIS.
+  int b_ind = filteredPaths[(conInd * NUM_CONNECTIONS * NUM_CONNECTIONS) + (blockIdx.x * NUM_CONNECTIONS) + threadIdx.x];
         int cost = 0;
 
         for(int e = 0; e <= p[b_ind].index; ++e) {
@@ -338,8 +337,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    simulate_GPU(vertexList,edgeList);
-    //simulate(vertexList,edgeList);
+    //simulate_GPU(vertexList,edgeList);
+    simulate(vertexList,edgeList);
     return 0;
 }
 
