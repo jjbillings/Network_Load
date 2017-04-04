@@ -270,7 +270,8 @@ __global__ void filteredCostsKernel(SimplePath *p, int *potPathCosts, int conInd
                     if(c < firstOpenChannel) {
                         firstOpenChannel = c;
                     }
-                    continue;
+		    break;
+                    //continue;
                 }
 
                 bool disjoint = true;
@@ -337,8 +338,8 @@ int main(int argc, char** argv) {
 
     srand(time(NULL));
 
-    //simulate_GPU(vertexList,edgeList);
-    simulate(vertexList,edgeList);
+    simulate_GPU(vertexList,edgeList);
+    //simulate(vertexList,edgeList);
     return 0;
 }
 
@@ -371,10 +372,10 @@ void simulate_GPU(int *vertexList, Edge *edgeList){
     int *h_potPathCosts; //Host pointer for the array of potential path costs.
     Connection *d_cons; //Device pointer to the array of connections.
     Channel *d_channels; //Device pointer for the array of channels.
-    int *h_filteredPaths;
-    int *d_filteredPaths;
-    int *numPosPaths;
-    int *h_numCompatPaths;
+    int *h_filteredPaths; //Host pointer for the flattened 3D array of paths which are filtered based on compatibility
+    int *d_filteredPaths; //Device pointer for filtered paths
+    int *numPosPaths; //Host pointer for array containing the number of paths for each src/dest pair
+    int *h_numCompatPaths; //Host pointer for the flattened 2D array 
     int *d_numCompatPaths;
     
     for(int i = 0; i < (N_NODES*N_NODES); ++i) {
