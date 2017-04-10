@@ -36,3 +36,6 @@ C++ app to simulate the load on an optical network.
 
 
 Data Collection: Keep MAX_CHANNELS and NUM_CONNECTIONS constant, allocate varying numbers of random connections on the network, measure cpu vs gpu performance. Take a large number of samples for each quantity of random connections.
+
+Different File for each CONNECTIONS quantity
+Export: SAMPLE#,TOTAL_RUNTIME,(KERNEL_RUNTIME)
