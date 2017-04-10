@@ -33,3 +33,6 @@ C++ app to simulate the load on an optical network.
 - [ ] 5. Try a larger network (COSTS Network was recommended by Kim)
 - [ ] 6. Use a much larger set of test data.
 - [ ] 7. Drastically change the parameters - Allocate like 100 random connections and then measure the CPU vs. GPU performance over a large number of samples (1 sample being an allocation of 100 random connections). Then increase or decrease the parameters one at a time. MAX_CHANNELS,NUM_CONNECTIONS I think would be appropriate ones to start with.
+
+
+Data Collection: Keep MAX_CHANNELS and NUM_CONNECTIONS constant, allocate varying numbers of random connections on the network, measure cpu vs gpu performance. Take a large number of samples for each quantity of random connections.
